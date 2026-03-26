@@ -1,0 +1,30 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFrameworks>;net8.0;net10.0</TargetFrameworks>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\TownSuite.WorkQueues\TownSuite.WorkQueues.csproj" />
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.10" />
+		<PackageReference Include="Npgsql" Version="8.0.9" />
+	</ItemGroup>
+	<ItemGroup>
+	  <EmbeddedResource Include="..\scripts\postgresql\public.WorkQueue.sql">
+	    <Link>sql\public.WorkQueue.sql</Link>
+	  </EmbeddedResource>
+	  <EmbeddedResource Include="..\scripts\postgresql\public.WorkQueue_Dequeue.sql">
+	    <Link>sql\public.WorkQueue_Dequeue.sql</Link>
+	  </EmbeddedResource>
+	  <EmbeddedResource Include="..\scripts\postgresql\public.WorkQueue_Dequeue_NonDestructive.sql">
+	    <Link>sql\public.WorkQueue_Dequeue_NonDestructive.sql</Link>
+	  </EmbeddedResource>
+	  <EmbeddedResource Include="..\scripts\postgresql\public.WorkQueue_Enqueue.sql">
+	    <Link>sql\public.WorkQueue_Enqueue.sql</Link>
+	  </EmbeddedResource>
+	</ItemGroup>
+</Project>

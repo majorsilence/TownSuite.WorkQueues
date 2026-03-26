@@ -1,38 +1,43 @@
+using System.Data.Common;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using Testcontainers.MsSql;
+using Testcontainers.PostgreSql;
 
 namespace TownSuite.WorkQueues.Testing;
 
 [TestFixture]
-public class SqlServerBackedTest
+public class DatabasedBackedTest
 {
-    private IConfiguration config;
-
-    [SetUp]
-    public void Setup()
+    [TestCase("mssql")]
+    [TestCase("postgres")]
+    public async Task DequeueMustHaveTransactionTest1(string backend)
     {
-        config = new ConfigurationBuilder()
-            .AddJsonFile("appsettings.json")
-            .AddEnvironmentVariables()
-            .Build();
-        Cleanup();
+        await using var wrapper = await TestContainerWrapper.CreateContainerAsync(backend);
+        await wrapper.StartAsync();
+
+        await using var cn = wrapper.CreateConnection();
+        await cn.OpenAsync();
+
+        var workQueue = new DbBackedWorkQueue();
+
+        Assert.ThrowsAsync<WorkQueuesException>(async () =>
+        {
+            var result = await workQueue.Dequeue<dynamic>("ASecondUniqueChannelName", cn, null);
+        });
     }
 
-    private void Cleanup()
+    [TestCase("mssql")]
+    [TestCase("postgres")]
+    public async Task EnqueueAndDequeue_Test(string backend)
     {
-        using var cn = new SqlConnection(config.GetConnectionString("SqlServerDbConnection"));
-        cn.Open();
-        cn.Execute("delete from workqueue where channel='AUniqueChannelName';");
-        cn.Execute("delete from workqueue where channel='NonDestructiveName';");
-    }
-    
-    [Test]
-    public async Task EnqueueAndDequeue_Test()
-    {
-        await using var cn = new SqlConnection(config.GetConnectionString("SqlServerDbConnection"));
+        await using var wrapper = await TestContainerWrapper.CreateContainerAsync(backend);
+        await wrapper.StartAsync();
+
+        await using var cn = wrapper.CreateConnection();
         await cn.OpenAsync();
 
         var workQueue = new DbBackedWorkQueue();
@@ -48,11 +53,15 @@ public class SqlServerBackedTest
         var found = cn.QueryFirstOrDefault("select * from workqueue where channel = 'AUniqueChannelName'");
         Assert.That(found == null);
     }
-    
-    [Test]
-    public async Task EnqueueAndDequeue_NonDestructive_Test()
+
+    [TestCase("mssql")]
+    [TestCase("postgres")]
+    public async Task EnqueueAndDequeue_NonDestructive_Test(string backend)
     {
-        await using var cn = new SqlConnection(config.GetConnectionString("SqlServerDbConnection"));
+        await using var wrapper = await TestContainerWrapper.CreateContainerAsync(backend);
+        await wrapper.StartAsync();
+
+        await using var cn = wrapper.CreateConnection();
         await cn.OpenAsync();
 
         var workQueue = new DbBackedWorkQueue_NonDestructive();
@@ -73,9 +82,7 @@ public class SqlServerBackedTest
         Assert.That(found.Channel == "NonDestructiveName");
         Assert.That(found.Payload.Contains("\"Hello\": \"world\""));
         Assert.That(found.timeprocessedutc != null);
-        
-        
-   
-
     }
+
+ 
 }

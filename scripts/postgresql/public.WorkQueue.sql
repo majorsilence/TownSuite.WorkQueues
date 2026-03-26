@@ -1,4 +1,4 @@
-CREATE TABLE public.workqueue (
+CREATE TABLE IF NOT EXISTS public.workqueue (
     id SERIAL PRIMARY KEY,
     timecreatedutc TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     channel VARCHAR(50) NOT NULL,

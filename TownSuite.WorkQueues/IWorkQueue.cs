@@ -1,4 +1,5 @@
-﻿using System.Data;
+﻿using System.Collections.Concurrent;
+using System.Data;
 using System.Data.Common;
 
 namespace TownSuite.WorkQueues;

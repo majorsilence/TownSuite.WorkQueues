@@ -14,6 +14,40 @@ dotnet add package "TownSuite.WorkQueue" --source "C:\the\folder\with\the\nuget\
 ```
 
 
+# Message Bus & Consumer (work in progress)
+
+The library includes a lightweight message bus and consumer pattern that is a work in progress. Below is a small example showing how to implement an `IConsumer<T>`, subscribe it to a message bus, and publish a message.
+
+```cs
+// A consumer that handles OrderSubmitted messages
+public class OrderSubmittedConsumer : IConsumer<OrderSubmitted>
+{
+    public Task Consume(ConsumeContext<OrderSubmitted> context)
+    {
+        Console.WriteLine($"Received order {context.Message.Id} for {context.Message.Customer}");
+        return Task.CompletedTask;
+    }
+}
+
+// Create the bus (transport/constructor details are WIP and may change)
+// For illustration we reference the Postgres-backed message bus in the project
+var bus = new PostgresMessageBus(/* options or connection string */);
+
+// Subscribe the consumer
+var consumer = new OrderSubmittedConsumer();
+bus.Subscribe<OrderSubmitted>(consumer);
+
+// Publish a message
+await bus.Publish(new OrderSubmitted { Id = 123, Customer = "Alice" });
+
+// Consumers receive a `ConsumeContext<T>` which contains the message and metadata.
+// There are helper types such as `SimpleConsumeContext<T>` useful for testing.
+```
+
+Note: the message bus, transports, and consumer lifecycle are still being developed. The example above demonstrates the intended usage pattern and may require adjustments as the API evolves.
+
+
+
 # Example
 
 
