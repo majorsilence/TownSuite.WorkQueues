@@ -16,6 +16,7 @@ For higher throughput, consider purpose-built brokers such as Kafka, Redis Strea
 - [Running the Tests](#running-the-tests)
 - [Upgrading from Earlier Versions](#upgrading-from-earlier-versions)
 - [Benchmarks](#benchmarks)
+- [Migration guide — direct WorkQueue → message bus](MIGRATING.md)
 
 ---
 
