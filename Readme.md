@@ -11,6 +11,7 @@ For higher throughput, consider purpose-built brokers such as Kafka, Redis Strea
 - [Database Setup & Migrations](#database-setup--migrations)
 - [Work Queue (direct enqueue/dequeue)](#work-queue-direct-enqueuededequeue)
 - [Message Bus (publish/subscribe)](#message-bus-publishsubscribe)
+- [Redis Backend](#redis-backend)
 - [Dead-Letter Queue & Retries](#dead-letter-queue--retries)
 - [Configuration Reference](#configuration-reference)
 - [Running the Tests](#running-the-tests)
@@ -178,6 +179,98 @@ Multiple consumers can be subscribed to the same message type; each receives a c
 ### Message type names as channels
 
 The message bus derives the channel name from `typeof(T).FullName`. Keep message type names under 500 characters (straightforward for any normal namespace depth).
+
+---
+
+## Redis Backend
+
+`TownSuite.WorkQueues.Redis` provides two Redis-backed implementations that do not require a database:
+
+| Type | Interface | Backing structure |
+|---|---|---|
+| `RedisWorkQueue` | `IRedisWorkQueue` | Redis List (LPUSH / RPOP) |
+| `RedisMessageBus` | `IMessageBus` | Redis Streams (XADD / XREADGROUP / XAUTOCLAIM) |
+
+### Installation
+
+```powershell
+dotnet add package TownSuite.WorkQueues.Redis
+```
+
+### Redis work queue
+
+```cs
+using var mux = ConnectionMultiplexer.Connect("localhost:6379");
+var queue = new RedisWorkQueue(mux, new RedisOptions { KeyPrefix = "myapp" });
+
+// Enqueue
+await queue.EnqueueAsync("orders", new OrderPayload { Id = 42 });
+
+// Dequeue (returns null when empty)
+var item = await queue.DequeueAsync<OrderPayload>("orders");
+```
+
+FIFO order is guaranteed per channel. There is no retry or dead-letter logic in `RedisWorkQueue` — use `RedisMessageBus` when you need those.
+
+### Redis message bus
+
+The same `IConsumer<T>` and `IMessageBus` contracts used by `PostgresMessageBus` apply here.
+
+```cs
+using var mux = ConnectionMultiplexer.Connect("localhost:6379");
+
+var options = new RedisOptions
+{
+    KeyPrefix     = "myapp",
+    ConsumerGroup = "workers",
+    MaxBatchSize  = 50,
+    MaxWaitTime   = TimeSpan.FromSeconds(2),
+    MaxRetries    = 3
+};
+
+using var bus = new RedisMessageBus(mux, options, logger);
+bus.Subscribe(new OrderConsumer());
+
+await bus.Publish(new OrderSubmitted { OrderId = Guid.NewGuid() });
+```
+
+#### How retry and dead-letter work
+
+1. A message is claimed with `XREADGROUP`. On failure, it stays in the Pending Entry List.
+2. Once idle for `ReclaimIdleTime` (default `MaxWaitTime × 3`), `XAUTOCLAIM` reclaims it and increments its retry counter.
+3. When `retryCount >= MaxRetries`, the message is copied to `{prefix}:stream:{type}:dead` and ACK-ed on the main stream.
+
+Dead-lettered messages can be inspected and replayed using `XREAD` or any Redis client.
+
+### DI registration
+
+```cs
+builder.Services
+    .AddRedisConnection("localhost:6379")
+    .AddRedisMessageBus(opts =>
+    {
+        opts.KeyPrefix     = "myapp";
+        opts.ConsumerGroup = "workers";
+        opts.MaxRetries    = 3;
+    });
+
+// Optionally register a work queue on the same connection
+builder.Services.AddRedisWorkQueue(opts => opts.KeyPrefix = "myapp");
+```
+
+`Subscribe` calls must be made before the application starts accepting traffic so the polling loop sees the handlers.
+
+### `RedisOptions` reference
+
+| Property | Default | Description |
+|---|---|---|
+| `KeyPrefix` | `"workqueue"` | Prefix for all Redis keys |
+| `ConsumerGroup` | `"default"` | Stream consumer group name |
+| `ConsumerName` | `Environment.MachineName` | Unique identity within the group |
+| `ReclaimIdleTime` | `MaxWaitTime × 3` | Idle threshold before a pending message is reclaimed |
+| `MaxBatchSize` | `100` (inherited) | Messages read per polling cycle |
+| `MaxWaitTime` | `5s` (inherited) | Pause when the stream is empty |
+| `MaxRetries` | `3` (inherited) | Attempts before dead-lettering |
 
 ---
 

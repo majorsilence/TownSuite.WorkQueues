@@ -35,6 +35,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\TownSuite.WorkQueues.Postgres\TownSuite.WorkQueues.Postgres.csproj" />
+      <ProjectReference Include="..\TownSuite.WorkQueues.Redis\TownSuite.WorkQueues.Redis.csproj" />
       <ProjectReference Include="..\TownSuite.WorkQueues\TownSuite.WorkQueues.csproj" />
     </ItemGroup>
 

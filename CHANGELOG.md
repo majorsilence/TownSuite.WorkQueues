@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.1.0] — 2026-06-09
+
+### New features
+
+- **Redis backend** (`TownSuite.WorkQueues.Redis`) — `RedisWorkQueue` (Redis Lists, FIFO) and `RedisMessageBus` (Redis Streams with consumer groups, automatic retry, dead-lettering, and `XAUTOCLAIM`-based reclaim). No database required.
+
+---
+
 ## [2.0.0] — 2026-06-09
 
 ### Breaking changes
