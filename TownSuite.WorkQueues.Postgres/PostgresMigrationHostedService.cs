@@ -33,17 +33,17 @@ public class PostgresMigrationHostedService : IHostedService
         try
         {
             var workeQueueTable = EmbeddedSqlReader
-                .GetEmbeddedSql("TownSuite.WorkQueues.Postgres.sql.public.WorkeQueue.sql")
+                .GetEmbeddedSql("TownSuite.WorkQueues.Postgres.sql.public.WorkQueue.sql")
                 .Replace("public.", $"{options.Schema}.");
             var destructiveDequeue =
-                EmbeddedSqlReader.GetEmbeddedSql("TownSuite.WorkQueues.Postgres.sql.public.WorkeQueue_Dequeue.sql")
+                EmbeddedSqlReader.GetEmbeddedSql("TownSuite.WorkQueues.Postgres.sql.public.WorkQueue_Dequeue.sql")
                     .Replace("public.", $"{options.Schema}.");
             var nonDestructiveDequeue =
                 EmbeddedSqlReader.GetEmbeddedSql(
-                        "TownSuite.WorkQueues.Postgres.sql.public.WorkeQueue_Dequeue_NonDestructive.sql")
+                        "TownSuite.WorkQueues.Postgres.sql.public.WorkQueue_Dequeue_NonDestructive.sql")
                     .Replace("public.", $"{options.Schema}.");
             var enqueueWorkeQueue =
-                EmbeddedSqlReader.GetEmbeddedSql("TownSuite.WorkQueues.Postgres.sql.public.WorkeQueue_Enqueue.sql")
+                EmbeddedSqlReader.GetEmbeddedSql("TownSuite.WorkQueues.Postgres.sql.public.WorkQueue_Enqueue.sql")
                     .Replace("public.", $"{options.Schema}.");
 
 

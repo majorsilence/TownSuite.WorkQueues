@@ -5,7 +5,7 @@ GO
 
 CREATE PROCEDURE [dbo].[WorkQueue_Dequeue_NonDestructive]
     (
-    @p_channel nvarchar(50),
+    @p_channel nvarchar(500),
     @p_offset int,
     @p_payload nvarchar(MAX) OUTPUT
 )

@@ -1,11 +1,9 @@
 using System.Data.Common;
+using System.Text.Json;
 using Dapper;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Npgsql;
-using Testcontainers.MsSql;
-using Testcontainers.PostgreSql;
 
 namespace TownSuite.WorkQueues.Testing;
 
@@ -26,7 +24,7 @@ public class DatabasedBackedTest
 
         Assert.ThrowsAsync<WorkQueuesException>(async () =>
         {
-            var result = await workQueue.Dequeue<dynamic>("ASecondUniqueChannelName", cn, null);
+            var result = await workQueue.Dequeue<JsonElement>("ASecondUniqueChannelName", cn, null!);
         });
     }
 
@@ -46,9 +44,9 @@ public class DatabasedBackedTest
             new { Hello = "world" }, cn, null);
 
         await using var txn = cn.BeginTransaction();
-        var result = await workQueue.Dequeue<dynamic>("AUniqueChannelName", cn, txn);
+        var result = await workQueue.Dequeue<JsonElement>("AUniqueChannelName", cn, txn);
         txn.Commit();
-        Assert.That(string.Equals(result.ToString(), "{ Hello = world }"));
+        Assert.That(result.GetProperty("Hello").GetString(), Is.EqualTo("world"));
 
         var found = cn.QueryFirstOrDefault("select * from workqueue where channel = 'AUniqueChannelName'");
         Assert.That(found == null);
@@ -72,17 +70,18 @@ public class DatabasedBackedTest
             new { Hello = "The Second" }, cn, null);
 
         await using var txn1 = cn.BeginTransaction();
-        var result1 = await workQueue.Dequeue<dynamic>("NonDestructiveName", cn, txn1);
-        var result2 = await workQueue.Dequeue<dynamic>("NonDestructiveName", cn, txn1);
+        var result1 = await workQueue.Dequeue<JsonElement>("NonDestructiveName", cn, txn1);
+        var result2 = await workQueue.Dequeue<JsonElement>("NonDestructiveName", cn, txn1);
         txn1.Commit();
-        Assert.That(string.Equals(result2.ToString(), "{ Hello = The Second }"));
 
+        Assert.That(result1.GetProperty("Hello").GetString(), Is.EqualTo("world"));
+        Assert.That(result2.GetProperty("Hello").GetString(), Is.EqualTo("The Second"));
+
+        // Column names are lowercase in both PostgreSQL and SQL Server.
         var found = cn.QueryFirstOrDefault<dynamic>("select * from workqueue where channel = 'NonDestructiveName'");
-        Assert.That(found != null);
-        Assert.That(found.Channel == "NonDestructiveName");
-        Assert.That(found.Payload.Contains("\"Hello\": \"world\""));
-        Assert.That(found.timeprocessedutc != null);
+        Assert.That(found, Is.Not.Null);
+        Assert.That((string)found.channel, Is.EqualTo("NonDestructiveName"));
+        Assert.That(((string)found.payload).Contains("Hello"), Is.True);
+        Assert.That(found.timeprocessedutc, Is.Not.Null);
     }
-
- 
 }

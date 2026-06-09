@@ -1,5 +1,5 @@
 CREATE OR REPLACE PROCEDURE public.workqueue_dequeue(
-    p_channel VARCHAR(50),
+    p_channel VARCHAR(500),
     p_offset INT,
     OUT p_payload TEXT
 )

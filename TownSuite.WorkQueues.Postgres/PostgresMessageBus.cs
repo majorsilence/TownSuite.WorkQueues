@@ -1,20 +1,12 @@
-﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using System.Collections.Concurrent;
-using System.Data;
 using System.Text.Json;
-using TownSuite.WorkQueues.Postgres;
 
 namespace TownSuite.WorkQueues.Postgres;
 
-/// <summary>
-/// A PostgreSQL‑backed message bus. It handles publishing messages by inserting them into a database
-/// and continuously polls for unprocessed messages to dispatch them to in‑memory subscribers.
-/// </summary>
 public class PostgresMessageBus : IMessageBus, IDisposable
 {
-    private readonly string _connectionString;
     private readonly CancellationTokenSource _cts = new CancellationTokenSource();
     private readonly ConcurrentDictionary<Type, ConcurrentBag<Func<object, Task>>> _handlers
         = new ConcurrentDictionary<Type, ConcurrentBag<Func<object, Task>>>();
@@ -22,58 +14,41 @@ public class PostgresMessageBus : IMessageBus, IDisposable
     private readonly ILogger _logger;
     private readonly SqlTransportOptions _options;
 
-    public PostgresMessageBus(SqlTransportOptions options, 
-        ILogger logger)
+    public PostgresMessageBus(SqlTransportOptions options, ILogger logger)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _connectionString = _options.ConnectionString;      
-        // Start background polling for messages stored in PostgreSQL.
         _pollingTask = Task.Run(ProcessMessagesAsync);
     }
 
-    /// <summary>
-    /// Registers a consumer for a specific message type.
-    /// </summary>
     public void Subscribe<T>(IConsumer<T> consumer)
     {
         var bag = _handlers.GetOrAdd(typeof(T), _ => new ConcurrentBag<Func<object, Task>>());
-        Func<object, Task> handler = async (obj) =>
+        bag.Add(async obj =>
         {
             if (obj is T message)
-            {
-                var context = new SimpleConsumeContext<T>(message);
-                await consumer.Consume(context);
-            }
-        };
-        bag.Add(handler);
+                await consumer.Consume(new SimpleConsumeContext<T>(message));
+        });
     }
 
-    /// <summary>
-    /// Publishes a message by serializing it to JSON and inserting it into the PostgreSQL table.
-    /// </summary>
     public async Task Publish<T>(T message)
     {
-        var messageType = typeof(T).FullName;
+        var channel = typeof(T).FullName
+            ?? throw new InvalidOperationException($"Cannot determine channel name for type {typeof(T)}");
+
+        if (channel.Length > 500)
+            throw new ArgumentException($"Message type name exceeds 500 characters: {channel}");
+
         var payload = JsonSerializer.Serialize(message);
-        using (var conn = new NpgsqlConnection(_connectionString))
-        {
-            await conn.OpenAsync();
-            var sql = $"INSERT INTO {_options.Schema}.workqueue(channel, payload) VALUES(@p_channel, @p_payload)";
-            using (var cmd = new NpgsqlCommand(sql, conn))
-            {
-                cmd.Parameters.AddWithValue("@p_channel", messageType);
-                cmd.Parameters.AddWithValue("@p_payload", payload);
-                await cmd.ExecuteNonQueryAsync();
-            }
-        }
+        await using var conn = new NpgsqlConnection(_options.ConnectionString);
+        await conn.OpenAsync();
+        var sql = $"INSERT INTO {_options.Schema}.workqueue(channel, payload) VALUES(@channel, @payload)";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("@channel", channel);
+        cmd.Parameters.AddWithValue("@payload", payload);
+        await cmd.ExecuteNonQueryAsync();
     }
 
-    /// <summary>
-    /// The background loop that polls PostgreSQL for unprocessed messages,
-    /// claims them (using SELECT ... FOR UPDATE SKIP LOCKED), marks them as processed,
-    /// and dispatches each message.
-    /// </summary>
     private async Task ProcessMessagesAsync()
     {
         while (!_cts.Token.IsCancellationRequested)
@@ -81,141 +56,119 @@ public class PostgresMessageBus : IMessageBus, IDisposable
             try
             {
                 int processedCount = await ClaimMessagesAsync(_options.MaxBatchSize);
-
                 if (processedCount == 0)
-                {
-                    // Pause briefly when there are no messages.
                     await Task.Delay(_options.MaxWaitTime, _cts.Token);
-                }
             }
-            catch (TaskCanceledException)
+            catch (TaskCanceledException) { }
+            catch (Exception ex)
             {
-                // Graceful termination.
+                _logger.LogError(ex, "Error in PostgresMessageBus polling loop");
+                try { await Task.Delay(1000, _cts.Token); } catch (TaskCanceledException) { }
+            }
+        }
+    }
+
+    private async Task<int> ClaimMessagesAsync(int maxMessages)
+    {
+        if (_handlers.Count == 0)
+            return 0;
+
+        var channelNames = _handlers.Keys
+            .Select(t => t.FullName)
+            .OfType<string>()
+            .ToArray();
+
+        if (channelNames.Length == 0)
+            return 0;
+
+        var messages = new List<MessageDto>();
+
+        await using var conn = new NpgsqlConnection(_options.ConnectionString);
+        await conn.OpenAsync();
+        await using var tran = await conn.BeginTransactionAsync();
+
+        var selectSql = $"""
+            SELECT id, channel, payload
+            FROM {_options.Schema}.workqueue
+            WHERE timeprocessedutc IS NULL
+              AND failedat IS NULL
+              AND channel = ANY(@channels)
+            ORDER BY timecreatedutc
+            FOR UPDATE SKIP LOCKED
+            LIMIT @maxMessages
+            """;
+
+        await using (var cmd = new NpgsqlCommand(selectSql, conn, tran))
+        {
+            cmd.Parameters.AddWithValue("@channels", channelNames);
+            cmd.Parameters.AddWithValue("@maxMessages", maxMessages);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                messages.Add(new MessageDto
+                {
+                    Id = reader.GetInt32(0),
+                    Channel = reader.GetString(1),
+                    Payload = reader.GetString(2)
+                });
+            }
+        }
+
+        foreach (var msg in messages)
+        {
+            bool success = false;
+            try
+            {
+                await DispatchMessageAsync(msg);
+                success = true;
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "Error processing messages in PostgresMessageBus");
-                await Task.Delay(1000, _cts.Token);
+                _logger.LogError(ex, "Handler failed for message {Id} on channel {Channel}", msg.Id, msg.Channel);
             }
-        }
-    }
 
-    /// <summary>
-    /// Retrieves a batch of unprocessed messages from the database using row locking.
-    /// Marks each message as processed within the same transaction.
-    /// </summary>
-    private async Task<int> ClaimMessagesAsync(int maxMessages)
-    {
-        var messages = new List<MessageDto>();
-
-        using (var conn = new NpgsqlConnection(_connectionString))
-        {
-            await conn.OpenAsync();
-            using (var tran = await conn.BeginTransactionAsync())
+            if (success)
             {
-                // Select messages not yet processed and lock the rows.
-                // filter for only channels that have registered handlers.
-                if (_handlers.Count == 0)
-                {
-                    // No handlers registered, skip processing.
-                    return 0;
-                }
-                var channels = string.Join(",", _handlers.Keys.Select(t => $"'{t.FullName}'"));
-                if (string.IsNullOrEmpty(channels))
-                {
-                    // No channels to process, skip.
-                    return 0;
-                }
-                // Use FOR UPDATE SKIP LOCKED to avoid blocking other transactions.
-                // This allows us to claim messages without waiting for others to finish processing.
-                // We also limit the number of messages to process in one go.
-                // This is important to avoid overwhelming the system with too many messages at once.
-                // The messages are ordered by creation time to process older messages first.
-                // Note: Ensure the 'workqueue' table has the necessary indexes for performance.
-                // The 'timecreatedutc' column should be indexed for efficient ordering.
-                if (_logger?.IsEnabled(LogLevel.Debug) == true)
-                {
-                    _logger.LogDebug("Claiming up to {MaxMessages} messages from workqueue", maxMessages);
-                }
-                // Use parameterized query to prevent SQL injection and improve performance.
-                if (_logger?.IsEnabled(LogLevel.Debug) == true)
-                {
-                    _logger.LogDebug("Using channels: {Channels}", channels);
-                }
-                // Use a parameterized query to avoid SQL injection and improve performance.
-                // The 'timeprocessedutc' column is used to filter out already processed messages.
-                // The 'FOR UPDATE SKIP LOCKED' clause allows us to lock the rows we are processing
-                // without blocking other transactions that might be trying to process the same messages.
-                // The 'LIMIT' clause ensures we only process a limited number of messages at a time.
-                // This is important to avoid overwhelming the system with too many messages at once.
-                // The 'ORDER BY timecreatedutc' clause ensures we process messages in the order they were created.
-                // This is important to ensure that messages are processed in the order they were created,
-                // which is important for many applications.
-
-                var sql = @$"SELECT id, timecreatedutc, channel, payload, timeprocessedutc
-                    FROM {_options.Schema}.workqueue WHERE timeprocessedutc is null 
-                    and channel = ANY(@channels::text[])
-                    ORDER BY timecreatedutc FOR UPDATE SKIP LOCKED LIMIT @maxMessages";
-                using var cmd = new NpgsqlCommand(sql, conn, tran);
-                cmd.Parameters.AddWithValue("@channels", channels);
-                cmd.Parameters.AddWithValue("@maxMessages", maxMessages);
-                using var reader = await cmd.ExecuteReaderAsync();
-
-                while (await reader.ReadAsync())
-                {
-                    messages.Add(new MessageDto
-                    {
-                        Id = reader.GetInt32(0),
-                        TimeCreatedUtc = reader.GetDateTime(1),
-                        Channel = reader.GetString(2),
-                        Payload = reader.GetString(3),
-                        TimeProcessedUtc = reader.GetDateTime(4)
-                    });
-                }
-
-
-                // Mark each claimed message as processed.
-                foreach (var msg in messages)
-                {
-                    await DispatchMessageAsync(msg);
-
-                    using (var updateCmd = new NpgsqlCommand($"UPDATE {_options.Schema}.workqueue SET timeprocessedutc = CURRENT_TIMESTAMP WHERE id = @id", conn, tran))
-                    {
-                        updateCmd.Parameters.AddWithValue("id", msg.Id);
-                        await updateCmd.ExecuteNonQueryAsync();
-                    }
-                }
-                await tran.CommitAsync();
+                await using var updateCmd = new NpgsqlCommand(
+                    $"UPDATE {_options.Schema}.workqueue SET timeprocessedutc = CURRENT_TIMESTAMP WHERE id = @id",
+                    conn, tran);
+                updateCmd.Parameters.AddWithValue("id", msg.Id);
+                await updateCmd.ExecuteNonQueryAsync();
+            }
+            else
+            {
+                // Increment retry count; dead-letter the message once MaxRetries is reached.
+                await using var retryCmd = new NpgsqlCommand($"""
+                    UPDATE {_options.Schema}.workqueue
+                    SET retrycount = retrycount + 1,
+                        failedat = CASE WHEN retrycount + 1 >= @maxRetries THEN CURRENT_TIMESTAMP ELSE NULL END
+                    WHERE id = @id
+                    """, conn, tran);
+                retryCmd.Parameters.AddWithValue("id", msg.Id);
+                retryCmd.Parameters.AddWithValue("maxRetries", _options.MaxRetries);
+                await retryCmd.ExecuteNonQueryAsync();
             }
         }
+
+        await tran.CommitAsync();
         return messages.Count;
     }
 
-    /// <summary>
-    /// Dispatches a message to in‑memory consumers by deserializing its payload
-    /// and invoking the registered handlers.
-    /// </summary>
     private async Task DispatchMessageAsync(MessageDto msg)
     {
-        // Locate the Channel using the stored message type name.
-        var type = Type.GetType(msg.Channel);
+        // Resolve the type from registered handlers (avoids relying on assembly-scanning via Type.GetType).
+        var type = _handlers.Keys.FirstOrDefault(t => t.FullName == msg.Channel);
         if (type == null)
         {
-            _logger?.LogWarning("Unknown message channel: {Channel}", msg.Channel);
+            _logger.LogWarning("No handlers registered for channel: {Channel} — message {Id} will be skipped", msg.Channel, msg.Id);
             return;
         }
 
-        if (_handlers.TryGetValue(type, out var handlers))
-        {
-            // Deserialize the JSON payload back into the proper type.
-            var message = JsonSerializer.Deserialize(msg.Payload, type);
-            var tasks = handlers.Select(handler => handler(message));
-            await Task.WhenAll(tasks);
-        }
-        else
-        {
-            _logger?.LogWarning("No handlers registered for message channel: {Channel}", msg.Channel);
-        }
+        if (!_handlers.TryGetValue(type, out var handlers))
+            return;
+
+        var message = JsonSerializer.Deserialize(msg.Payload, type);
+        await Task.WhenAll(handlers.Select(h => h(message!)));
     }
 
     public void Dispose()
@@ -223,10 +176,9 @@ public class PostgresMessageBus : IMessageBus, IDisposable
         _cts.Cancel();
         try
         {
-            _pollingTask?.Wait();
+            _pollingTask?.Wait(TimeSpan.FromSeconds(10));
         }
         catch (AggregateException) { }
         _cts.Dispose();
     }
-
 }

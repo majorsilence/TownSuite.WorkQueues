@@ -1,11 +1,12 @@
-﻿namespace TownSuite.WorkQueues;
+namespace TownSuite.WorkQueues;
 
 /// <summary>
-/// Provides context for a message. This can be extended with headers, correlation IDs, etc.
+/// Delivers a message to a consumer, with room to carry future metadata
+/// (e.g. correlation IDs, headers, retry count).
 /// </summary>
 /// <typeparam name="T">The message type.</typeparam>
 public interface ConsumeContext<T>
 {
+    /// <summary>Gets the deserialised message payload.</summary>
     T Message { get; }
 }
-

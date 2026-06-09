@@ -20,5 +20,10 @@ namespace TownSuite.WorkQueues
         /// Whether to allow empty batches (i.e., processing when no messages are available).
         /// </summary>
         public bool AllowEmptyBatches { get; set; } = false;
+
+        /// <summary>
+        /// Maximum number of delivery attempts before a message is moved to the dead-letter state.
+        /// </summary>
+        public int MaxRetries { get; set; } = 3;
     }
 }

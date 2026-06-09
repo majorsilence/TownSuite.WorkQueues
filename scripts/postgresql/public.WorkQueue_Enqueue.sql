@@ -1,5 +1,5 @@
 CREATE OR REPLACE PROCEDURE public.workqueue_enqueue(
-    p_channel VARCHAR(50),
+    p_channel VARCHAR(500),
     p_payload TEXT
 )
 LANGUAGE plpgsql

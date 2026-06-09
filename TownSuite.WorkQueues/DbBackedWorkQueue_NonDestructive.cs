@@ -1,7 +1,6 @@
 using System.Data;
 using System.Data.Common;
-using System.Reflection.Metadata.Ecma335;
-using Newtonsoft.Json;
+using System.Text.Json;
 
 namespace TownSuite.WorkQueues;
 
@@ -14,17 +13,13 @@ public class DbBackedWorkQueue_NonDestructive : DbBackedWorkQueue, IWorkQueue
 #endif
         ArgumentNullException.ThrowIfNull(con, nameof(con));
         ArgumentNullException.ThrowIfNull(txn, nameof(txn));
-        
+
         if (con is not DbConnection connection)
-        {
             throw new WorkQueuesException("con must be a DbConnection");
-        }
-        
+
         if (txn is not DbTransaction transaction)
-        {
             throw new WorkQueuesException("txn must be a DbTransaction");
-        }
-        
+
         return await Dequeue<T>(channel, connection, transaction, offset);
     }
 
@@ -35,7 +30,7 @@ public class DbBackedWorkQueue_NonDestructive : DbBackedWorkQueue, IWorkQueue
 #endif
         ArgumentNullException.ThrowIfNull(con, nameof(con));
         ArgumentNullException.ThrowIfNull(txn, nameof(txn));
-        
+
         if (con.State == ConnectionState.Closed) await con.OpenAsync();
 
         await using var command = con.CreateCommand();
@@ -60,19 +55,20 @@ public class DbBackedWorkQueue_NonDestructive : DbBackedWorkQueue, IWorkQueue
         payloadParameter.Direction = ParameterDirection.Output;
         command.Parameters.Add(payloadParameter);
 
-        await using var reader = await command.ExecuteReaderAsync();
-        string jsonPayload = payloadParameter.Value?.ToString()!;
+        // PostgreSQL CALL returns OUT parameters as a result-set row.
+        // SQL Server EXEC with OUTPUT sets the parameter value after the reader is closed.
+        // Both paths are covered: read from the reader first, then fall back to the parameter.
+        string? jsonPayload = null;
+        await using (var reader = await command.ExecuteReaderAsync())
+        {
+            if (await reader.ReadAsync() && !reader.IsDBNull(0))
+                jsonPayload = reader.GetString(0);
+        }
+        jsonPayload ??= payloadParameter.Value?.ToString();
 
         if (string.IsNullOrWhiteSpace(jsonPayload))
-        {
             return default!;
-        }
 
-        var settings = new JsonSerializerSettings
-        {
-            TypeNameHandling = TypeNameHandling.Auto
-        };
-
-        return JsonConvert.DeserializeObject<T>(jsonPayload, settings)!;
+        return JsonSerializer.Deserialize<T>(jsonPayload)!;
     }
 }
