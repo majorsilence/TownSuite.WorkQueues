@@ -5,8 +5,94 @@ For higher throughput, consider purpose-built brokers such as Kafka, Redis Strea
 
 ---
 
+## Quick Start
+
+The fastest path to a working message bus. Requires a running PostgreSQL instance.
+For Redis, see the [Redis Backend](#redis-backend) section.
+
+**1. Install**
+
+```bash
+dotnet add package TownSuite.WorkQueues
+dotnet add package TownSuite.WorkQueues.Postgres
+```
+
+**2. Define a message**
+
+```csharp
+public class OrderSubmitted
+{
+    public Guid   OrderId  { get; set; }
+    public string Customer { get; set; } = string.Empty;
+}
+```
+
+**3. Write a consumer**
+
+```csharp
+public class OrderConsumer : IConsumer<OrderSubmitted>
+{
+    public Task Consume(ConsumeContext<OrderSubmitted> context)
+    {
+        Console.WriteLine($"Order received: {context.Message.OrderId}");
+        return Task.CompletedTask;
+        // Throw any exception to retry. After MaxRetries the message is dead-lettered.
+    }
+}
+```
+
+**4. Wire it up (Worker Service / ASP.NET Core)**
+
+```csharp
+// Program.cs
+builder.Services.AddSingleton(new SqlTransportOptions
+{
+    ConnectionString      = "Host=localhost;Database=myapp;Username=app;Password=secret",
+    AdminConnectionString = "Host=localhost;Database=myapp;Username=admin;Password=secret",
+    Schema     = "transport",
+    MaxRetries = 3
+});
+
+// Creates the workqueue table and stored procedures on first startup.
+builder.Services.AddPostgresMigrationHostedService();
+
+// Bus singleton — subscribe all consumers here before the bus starts.
+builder.Services.AddSingleton<IMessageBus>(sp =>
+{
+    var bus = new PostgresMessageBus(
+        sp.GetRequiredService<SqlTransportOptions>(),
+        sp.GetRequiredService<ILogger<PostgresMessageBus>>());
+
+    bus.Subscribe(new OrderConsumer());
+    return bus;
+});
+
+// Resolves the bus after migrations complete and disposes it on shutdown.
+builder.Services.AddHostedService<MessageBusHostedService>();
+```
+
+`MessageBusHostedService` is a small wrapper you add once to every project — see
+[WORKER_SERVICES.md](WORKER_SERVICES.md) for the full implementation (10 lines).
+
+**5. Publish a message**
+
+```csharp
+// From a controller, minimal API endpoint, or any service with IMessageBus injected:
+await bus.Publish(new OrderSubmitted
+{
+    OrderId  = Guid.NewGuid(),
+    Customer = "alice@example.com"
+});
+```
+
+The message is written to the database and delivered to `OrderConsumer` on the next polling
+cycle (within `MaxWaitTime`, default 5 s).
+
+---
+
 ## Contents
 
+- [Quick Start](#quick-start)
 - [NuGet Package](#nuget-package)
 - [Database Setup & Migrations](#database-setup--migrations)
 - [Work Queue (direct enqueue/dequeue)](#work-queue-direct-enqueuededequeue)
@@ -18,6 +104,7 @@ For higher throughput, consider purpose-built brokers such as Kafka, Redis Strea
 - [Upgrading from Earlier Versions](#upgrading-from-earlier-versions)
 - [Benchmarks](#benchmarks)
 - [Migration guide — direct WorkQueue → message bus](MIGRATING.md)
+- [Worker Service & ASP.NET Core integration guide](WORKER_SERVICES.md)
 
 ---
 
@@ -150,7 +237,7 @@ public class OrderConsumer : IConsumer<OrderSubmitted>
 }
 ```
 
-### Wiring up the bus
+### Wiring up the bus (standalone / console)
 
 ```cs
 var options = new SqlTransportOptions
@@ -175,6 +262,8 @@ await bus.Publish(new OrderSubmitted
 ```
 
 Multiple consumers can be subscribed to the same message type; each receives a copy of every message.
+
+> **Worker Service / ASP.NET Core:** see the [Worker Services integration guide](WORKER_SERVICES.md) for complete `Program.cs` examples, scoped DI patterns, graceful shutdown, and Windows Service / systemd deployment.
 
 ### Message type names as channels
 
@@ -259,6 +348,8 @@ builder.Services.AddRedisWorkQueue(opts => opts.KeyPrefix = "myapp");
 ```
 
 `Subscribe` calls must be made before the application starts accepting traffic so the polling loop sees the handlers.
+
+> **Worker Service / ASP.NET Core:** see the [Worker Services integration guide](WORKER_SERVICES.md) for complete Redis `Program.cs` examples, scoped DI, graceful shutdown, and deployment.
 
 ### `RedisOptions` reference
 
