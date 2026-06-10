@@ -69,6 +69,6 @@ public class DbBackedWorkQueue_NonDestructive : DbBackedWorkQueue, IWorkQueue
         if (string.IsNullOrWhiteSpace(jsonPayload))
             return default!;
 
-        return JsonSerializer.Deserialize<T>(jsonPayload)!;
+        return LegacyJsonDeserializer.Deserialize<T>(jsonPayload)!;
     }
 }

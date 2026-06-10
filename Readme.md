@@ -423,24 +423,28 @@ No external database setup or `appsettings.json` changes are needed.
 
 ## Upgrading from Earlier Versions
 
-### Serialization change (breaking)
+### Serialization change
 
-Prior to the production-ready update, `DbBackedWorkQueue` serialised payloads using Newtonsoft.Json with `TypeNameHandling.All`, embedding `$type` metadata and indented formatting:
-
-```json
-{
-  "$type": "MyApp.OrderPayload, MyApp",
-  "Id": 42
-}
-```
-
-The library now uses `System.Text.Json` with no type metadata:
+`DbBackedWorkQueue` now writes payloads with `System.Text.Json` (compact, no `$type`):
 
 ```json
 {"Id":42}
 ```
 
-**Action required before upgrading:** drain the queue so no messages serialised by the old code remain. Messages written by the old code cannot be deserialised by the new code.
+Old payloads written by Newtonsoft.Json `TypeNameHandling.All` look like:
+
+```json
+{"$type":"MyApp.OrderPayload, MyApp","Id":42}
+```
+
+**No drain is required for the common case.** The library reads both formats:
+
+- `$type` annotations on POCOs and nested objects are silently ignored.
+- Collection roots wrapped in `{"$type":"...","$values":[...]}` are unwrapped automatically.
+
+The one scenario that still requires draining (or manual replay) is **polymorphic payloads**
+where a derived type was stored and the call site deserialises to an abstract base type — an
+unusual pattern. All other callers can upgrade in-place.
 
 ### Schema changes
 

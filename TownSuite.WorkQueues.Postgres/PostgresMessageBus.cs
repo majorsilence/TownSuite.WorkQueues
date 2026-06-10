@@ -167,7 +167,7 @@ public class PostgresMessageBus : IMessageBus, IDisposable
         if (!_handlers.TryGetValue(type, out var handlers))
             return;
 
-        var message = JsonSerializer.Deserialize(msg.Payload, type);
+        var message = LegacyJsonDeserializer.Deserialize(msg.Payload, type);
         await Task.WhenAll(handlers.Select(h => h(message!)));
     }
 

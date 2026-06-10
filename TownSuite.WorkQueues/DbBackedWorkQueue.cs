@@ -112,7 +112,7 @@ public class DbBackedWorkQueue : IWorkQueue
             string jsonPayload = reader.GetString(0);
             if (string.IsNullOrWhiteSpace(jsonPayload))
                 return default!;
-            return JsonSerializer.Deserialize<T>(jsonPayload)!;
+            return LegacyJsonDeserializer.Deserialize<T>(jsonPayload)!;
         }
 
         return default!;

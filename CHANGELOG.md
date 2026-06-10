@@ -16,9 +16,24 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking changes
 
-- **Serialisation format changed.** `DbBackedWorkQueue` now uses `System.Text.Json` instead of Newtonsoft.Json. Payloads are stored as compact JSON without `$type` metadata. Messages written by v1.x **cannot be deserialised** by v2.x. Drain the queue before upgrading.
-
 - **`Newtonsoft.Json` removed** from `TownSuite.WorkQueues`. If your application depended on the transitive reference, add an explicit package reference.
+
+### Serialisation change (not breaking for most users)
+
+`DbBackedWorkQueue` now writes payloads with `System.Text.Json` (compact JSON, no `$type`
+metadata). **Reading** old Newtonsoft.Json payloads from the queue is handled automatically:
+
+| Legacy payload type | Handled? |
+|---|---|
+| Simple POCO with `$type` annotation | ✓ — `$type` is silently ignored |
+| Nested POCO, each level with `$type` | ✓ — ignored at every level |
+| Collection root wrapped in `$values` (`List<T>`, `T[]`) | ✓ — `$values` array is extracted before deserialising |
+| Polymorphic base-class usage (derived type written, base type read) | ✗ — derived-only properties are dropped; drain those channels before upgrading |
+
+Draining the queue before upgrading is no longer required for the common case. The only
+scenario that still requires a drain (or a manual replay) is polymorphic payloads where
+the stored `$type` pointed to a concrete derived class and the call site deserialises to an
+abstract base type — an unusual pattern.
 
 - **Schema changes** (see migration notes below).
 
