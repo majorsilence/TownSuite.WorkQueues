@@ -42,7 +42,7 @@ public class RedisWorkQueue : IRedisWorkQueue
         if (value.IsNullOrEmpty)
             return default;
 
-        return JsonSerializer.Deserialize<T>((string)value!);
+        return LegacyJsonDeserializer.Deserialize<T>((string)value!);
     }
 
     private string ListKey(string channel) => $"{_options.KeyPrefix}:{channel}";

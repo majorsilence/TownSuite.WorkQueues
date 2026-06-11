@@ -28,7 +28,7 @@ public class RedisMessageBusTests
 
         var consumer = new CountingRedisConsumer();
 
-        using var bus = new RedisMessageBus(mux, options, logger);
+        await using var bus = new RedisMessageBus(mux, options, logger);
         bus.Subscribe(consumer);
 
         for (int i = 0; i < 10; i++)
@@ -60,7 +60,7 @@ public class RedisMessageBusTests
         var consumerA = new CountingRedisConsumer();
         var consumerB = new CountingRedisConsumer();
 
-        using var bus = new RedisMessageBus(mux, options, logger);
+        await using var bus = new RedisMessageBus(mux, options, logger);
         bus.Subscribe(consumerA);
         bus.Subscribe(consumerB);
 

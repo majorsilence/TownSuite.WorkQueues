@@ -9,7 +9,7 @@ namespace TownSuite.WorkQueues.Redis;
 /// Redis Streams-backed message bus with at-least-once delivery, consumer groups,
 /// automatic retry, and dead-lettering.
 /// </summary>
-public class RedisMessageBus : IMessageBus, IDisposable
+public class RedisMessageBus : IMessageBus
 {
     private readonly CancellationTokenSource _cts = new();
     private readonly ConcurrentDictionary<Type, ConcurrentBag<Func<object, Task>>> _handlers = new();
@@ -24,7 +24,9 @@ public class RedisMessageBus : IMessageBus, IDisposable
         _redis = redis ?? throw new ArgumentNullException(nameof(redis));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _pollingTask = Task.Run(ProcessMessagesAsync);
+        // Yield to the caller so Subscribe() calls made immediately after construction
+        // are registered before the first poll cycle runs.
+        _pollingTask = Task.Run(async () => { await Task.Yield(); await ProcessMessagesAsync(); });
     }
 
     /// <inheritdoc />
@@ -39,7 +41,7 @@ public class RedisMessageBus : IMessageBus, IDisposable
     }
 
     /// <inheritdoc />
-    public async Task Publish<T>(T message)
+    public async Task Publish<T>(T message, CancellationToken cancellationToken = default)
     {
         var channel = typeof(T).FullName
             ?? throw new InvalidOperationException($"Cannot determine channel name for type {typeof(T)}");
@@ -47,6 +49,7 @@ public class RedisMessageBus : IMessageBus, IDisposable
         if (channel.Length > 500)
             throw new ArgumentException($"Message type name exceeds 500 characters: {channel}");
 
+        cancellationToken.ThrowIfCancellationRequested();
         var payload = JsonSerializer.Serialize(message);
         var db = _redis.GetDatabase();
         await db.StreamAddAsync(StreamKey(channel), [new NameValueEntry("payload", payload)]);
@@ -69,7 +72,7 @@ public class RedisMessageBus : IMessageBus, IDisposable
                 }
 
                 if (processed == 0)
-                    await Task.Delay(_options.MaxWaitTime, _cts.Token);
+                    await WaitAsync();
             }
             catch (TaskCanceledException) { }
             catch (Exception ex)
@@ -78,6 +81,12 @@ public class RedisMessageBus : IMessageBus, IDisposable
                 try { await Task.Delay(1000, _cts.Token); } catch (TaskCanceledException) { }
             }
         }
+    }
+
+    private async Task WaitAsync()
+    {
+        if (!_options.AllowEmptyBatches)
+            await Task.Delay(_options.MaxWaitTime, _cts.Token);
     }
 
     private async Task EnsureConsumerGroupAsync(IDatabase db, string streamKey)
@@ -195,7 +204,7 @@ public class RedisMessageBus : IMessageBus, IDisposable
                 return true;
             }
 
-            var message = JsonSerializer.Deserialize((string)payloadField.Value!, type);
+            var message = LegacyJsonDeserializer.Deserialize((string)payloadField.Value!, type);
             if (message == null) return true;
 
             await Task.WhenAll(handlers.Select(h => h(message)));
@@ -210,11 +219,12 @@ public class RedisMessageBus : IMessageBus, IDisposable
 
     private string StreamKey(string channel) => $"{_options.KeyPrefix}:stream:{channel}";
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         _cts.Cancel();
-        try { _pollingTask?.Wait(TimeSpan.FromSeconds(10)); }
-        catch (AggregateException) { }
+        try { await _pollingTask.WaitAsync(TimeSpan.FromSeconds(10)); }
+        catch (OperationCanceledException) { }
+        catch (TimeoutException) { }
         _cts.Dispose();
     }
 }

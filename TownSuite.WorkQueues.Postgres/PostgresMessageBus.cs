@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace TownSuite.WorkQueues.Postgres;
 
-public class PostgresMessageBus : IMessageBus, IDisposable
+public class PostgresMessageBus : IMessageBus
 {
     private readonly CancellationTokenSource _cts = new CancellationTokenSource();
     private readonly ConcurrentDictionary<Type, ConcurrentBag<Func<object, Task>>> _handlers
@@ -18,7 +18,9 @@ public class PostgresMessageBus : IMessageBus, IDisposable
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _pollingTask = Task.Run(ProcessMessagesAsync);
+        // Yield to the caller so Subscribe() calls made immediately after construction
+        // are registered before the first poll cycle runs.
+        _pollingTask = Task.Run(async () => { await Task.Yield(); await ProcessMessagesAsync(); });
     }
 
     public void Subscribe<T>(IConsumer<T> consumer)
@@ -31,7 +33,7 @@ public class PostgresMessageBus : IMessageBus, IDisposable
         });
     }
 
-    public async Task Publish<T>(T message)
+    public async Task Publish<T>(T message, CancellationToken cancellationToken = default)
     {
         var channel = typeof(T).FullName
             ?? throw new InvalidOperationException($"Cannot determine channel name for type {typeof(T)}");
@@ -41,12 +43,12 @@ public class PostgresMessageBus : IMessageBus, IDisposable
 
         var payload = JsonSerializer.Serialize(message);
         await using var conn = new NpgsqlConnection(_options.ConnectionString);
-        await conn.OpenAsync();
+        await conn.OpenAsync(cancellationToken);
         var sql = $"INSERT INTO {_options.Schema}.workqueue(channel, payload) VALUES(@channel, @payload)";
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("@channel", channel);
         cmd.Parameters.AddWithValue("@payload", payload);
-        await cmd.ExecuteNonQueryAsync();
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private async Task ProcessMessagesAsync()
@@ -57,7 +59,7 @@ public class PostgresMessageBus : IMessageBus, IDisposable
             {
                 int processedCount = await ClaimMessagesAsync(_options.MaxBatchSize);
                 if (processedCount == 0)
-                    await Task.Delay(_options.MaxWaitTime, _cts.Token);
+                    await WaitAsync();
             }
             catch (TaskCanceledException) { }
             catch (Exception ex)
@@ -66,6 +68,12 @@ public class PostgresMessageBus : IMessageBus, IDisposable
                 try { await Task.Delay(1000, _cts.Token); } catch (TaskCanceledException) { }
             }
         }
+    }
+
+    private async Task WaitAsync()
+    {
+        if (!_options.AllowEmptyBatches)
+            await Task.Delay(_options.MaxWaitTime, _cts.Token);
     }
 
     private async Task<int> ClaimMessagesAsync(int maxMessages)
@@ -171,14 +179,12 @@ public class PostgresMessageBus : IMessageBus, IDisposable
         await Task.WhenAll(handlers.Select(h => h(message!)));
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         _cts.Cancel();
-        try
-        {
-            _pollingTask?.Wait(TimeSpan.FromSeconds(10));
-        }
-        catch (AggregateException) { }
+        try { await _pollingTask.WaitAsync(TimeSpan.FromSeconds(10)); }
+        catch (OperationCanceledException) { }
+        catch (TimeoutException) { }
         _cts.Dispose();
     }
 }

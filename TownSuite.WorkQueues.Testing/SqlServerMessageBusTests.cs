@@ -25,7 +25,7 @@ public class SqlServerMessageBusTests
 
         var consumer = new CountingSqlServerConsumer();
 
-        using var bus = new SqlServerMessageBus(options, logger);
+        await using var bus = new SqlServerMessageBus(options, logger);
         bus.Subscribe(consumer);
 
         foreach (int i in Enumerable.Range(1, 10))
@@ -61,7 +61,7 @@ public class SqlServerMessageBusTests
         var consumerA = new CountingSqlServerConsumer();
         var consumerB = new CountingSqlServerConsumer();
 
-        using var bus = new SqlServerMessageBus(options, logger);
+        await using var bus = new SqlServerMessageBus(options, logger);
         bus.Subscribe(consumerA);
         bus.Subscribe(consumerB);
 

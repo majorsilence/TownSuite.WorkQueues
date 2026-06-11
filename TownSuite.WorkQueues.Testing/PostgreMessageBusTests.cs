@@ -31,25 +31,20 @@ namespace TownSuite.WorkQueues.Testing
                 MaxWaitTime = TimeSpan.FromSeconds(1)
             };
 
-            using (var bus = new PostgresMessageBus(options, logger))
+            await using (var bus = new PostgresMessageBus(options, logger))
             {
-                // Register the consumer for the OrderSubmitted message.
                 bus.Subscribe(new OrderConsumer());
-
-                // Create and publish a range of order message.
 
                 foreach (int i in Enumerable.Range(1, 10))
                 {
-                    var order = new OrderSubmitted
+                    await bus.Publish(new OrderSubmitted
                     {
                         OrderId = Guid.NewGuid(),
                         ProductName = "Widget via PostgreSQL"
-                    };
-                    await bus.Publish(order);
+                    });
                 }
 
-                await Task.Delay(2000); // Wait for processing.
-                Console.WriteLine("Message published to PostgreSQL. Processing in the background...");
+                await Task.Delay(2000);
             }
 
             Assert.That(OrderConsumer.HandledCount, Is.EqualTo(10));

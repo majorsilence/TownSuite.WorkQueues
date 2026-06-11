@@ -344,7 +344,7 @@ When asked to perform this migration on a codebase, follow this sequence:
 2. **For each channel string**, find the payload type `T` used in the corresponding `Dequeue<T>` call.
    - If `T` is `dynamic`, `object`, or an anonymous type, create a named DTO first.
    - Record the mapping: old channel string → `typeof(T).FullName`.
-3. **Check the database** (ask the user or read config) — SQL Server? Stop. Not migratable.
+3. **Check the database** (ask the user or read config) — PostgreSQL or SQL Server? Continue. Redis? Use `RedisMessageBus` instead of `PostgresMessageBus`/`SqlServerMessageBus` and skip the migration DDL step.
 4. **Create `IConsumer<T>` classes** — move the body of the dequeue loop into `Consume()`.
    - Remove transaction management, null-check loops, and offset logic from the body.
    - If the old code incremented offset on failure, remove it — the bus retries automatically.

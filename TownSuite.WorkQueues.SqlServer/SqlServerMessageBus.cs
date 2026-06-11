@@ -11,7 +11,7 @@ namespace TownSuite.WorkQueues.SqlServer;
 /// multiple concurrent consumer instances safely claim disjoint sets of messages
 /// without blocking each other.
 /// </summary>
-public class SqlServerMessageBus : IMessageBus, IDisposable
+public class SqlServerMessageBus : IMessageBus
 {
     private readonly CancellationTokenSource _cts = new();
     private readonly ConcurrentDictionary<Type, ConcurrentBag<Func<object, Task>>> _handlers = new();
@@ -23,7 +23,9 @@ public class SqlServerMessageBus : IMessageBus, IDisposable
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger  = logger  ?? throw new ArgumentNullException(nameof(logger));
-        _pollingTask = Task.Run(ProcessMessagesAsync);
+        // Yield to the caller so Subscribe() calls made immediately after construction
+        // are registered before the first poll cycle runs.
+        _pollingTask = Task.Run(async () => { await Task.Yield(); await ProcessMessagesAsync(); });
     }
 
     /// <inheritdoc />
@@ -38,7 +40,7 @@ public class SqlServerMessageBus : IMessageBus, IDisposable
     }
 
     /// <inheritdoc />
-    public async Task Publish<T>(T message)
+    public async Task Publish<T>(T message, CancellationToken cancellationToken = default)
     {
         var channel = typeof(T).FullName
             ?? throw new InvalidOperationException($"Cannot determine channel name for {typeof(T)}");
@@ -49,13 +51,13 @@ public class SqlServerMessageBus : IMessageBus, IDisposable
         var payload = JsonSerializer.Serialize(message);
 
         await using var conn = new SqlConnection(_options.ConnectionString);
-        await conn.OpenAsync();
+        await conn.OpenAsync(cancellationToken);
 
         var sql = $"INSERT INTO [{_options.Schema}].[workqueue] ([channel], [payload]) VALUES (@channel, @payload)";
         await using var cmd = new SqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("@channel", channel);
         cmd.Parameters.AddWithValue("@payload", payload);
-        await cmd.ExecuteNonQueryAsync();
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private async Task ProcessMessagesAsync()
@@ -66,7 +68,7 @@ public class SqlServerMessageBus : IMessageBus, IDisposable
             {
                 int processed = await ClaimMessagesAsync(_options.MaxBatchSize);
                 if (processed == 0)
-                    await Task.Delay(_options.MaxWaitTime, _cts.Token);
+                    await WaitAsync();
             }
             catch (TaskCanceledException) { }
             catch (Exception ex)
@@ -75,6 +77,12 @@ public class SqlServerMessageBus : IMessageBus, IDisposable
                 try { await Task.Delay(1000, _cts.Token); } catch (TaskCanceledException) { }
             }
         }
+    }
+
+    private async Task WaitAsync()
+    {
+        if (!_options.AllowEmptyBatches)
+            await Task.Delay(_options.MaxWaitTime, _cts.Token);
     }
 
     private async Task<int> ClaimMessagesAsync(int maxMessages)
@@ -191,11 +199,12 @@ public class SqlServerMessageBus : IMessageBus, IDisposable
         await Task.WhenAll(handlers.Select(h => h(message!)));
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         _cts.Cancel();
-        try { _pollingTask?.Wait(TimeSpan.FromSeconds(10)); }
-        catch (AggregateException) { }
+        try { await _pollingTask.WaitAsync(TimeSpan.FromSeconds(10)); }
+        catch (OperationCanceledException) { }
+        catch (TimeoutException) { }
         _cts.Dispose();
     }
 }
