@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.2.0] — 2026-06-10
+
+### New features
+
+- **SQL Server message bus** (`TownSuite.WorkQueues.SqlServer`) — `SqlServerMessageBus` using `UPDLOCK + ROWLOCK + READPAST` for concurrent-safe polling; `SqlServerMigrationHostedService` for idempotent startup DDL; `SqlServerServiceExtensions` DI helpers. Requires SQL Server 2016+.
+
+---
+
 ## [2.1.0] — 2026-06-09
 
 ### New features

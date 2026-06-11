@@ -3,6 +3,7 @@ using System.Text.Json;
 
 [assembly: InternalsVisibleTo("TownSuite.WorkQueues.Postgres")]
 [assembly: InternalsVisibleTo("TownSuite.WorkQueues.Redis")]
+[assembly: InternalsVisibleTo("TownSuite.WorkQueues.SqlServer")]
 [assembly: InternalsVisibleTo("TownSuite.WorkQueues.Testing")]
 
 namespace TownSuite.WorkQueues;

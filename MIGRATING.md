@@ -13,7 +13,7 @@ Answer these questions before starting:
 
 | Question | If yes | If no |
 |---|---|---|
-| Is your database PostgreSQL? | Continue | **Do not migrate** — the message bus is PostgreSQL-only. Keep `IWorkQueue`. |
+| Is your database PostgreSQL or SQL Server? | Continue | **Do not migrate** — Redis is the only other bus-capable backend. Keep `IWorkQueue` or switch to Redis. |
 | Are you on v2.0.0 or later? | Continue | Upgrade to v2 first (see CHANGELOG). |
 | Do you need to inspect or replay failed messages? | The bus dead-letters automatically after `MaxRetries`. Continue. | Either works. |
 | Do you need ordered, exactly-once, or transactional processing tied to your own business transaction? | **Keep `IWorkQueue`** — the bus commits internally, you cannot join its transaction. | Continue. |
@@ -329,8 +329,6 @@ WHERE channel = 'MyApp.Models.OrderPayload'
 ## What NOT to migrate
 
 Keep `IWorkQueue` / `DbBackedWorkQueue` when:
-
-- You use **SQL Server** (no message bus for SQL Server).
 - Your processing logic must run **inside the same transaction** as other database writes (e.g. dequeue and update a related record atomically).
 - You use the **offset parameter** to build a specific sharding or skip strategy across multiple worker instances.
 - You use **`DbBackedWorkQueue_NonDestructive`** and rely on re-reading processed rows for audit or replay — the message bus marks rows processed and excludes them from future polls.

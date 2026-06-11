@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.4" />
+        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.10" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\TownSuite.WorkQueues\TownSuite.WorkQueues.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <EmbeddedResource Include="sql\dbo.WorkQueue.sql">
+            <Link>sql\dbo.WorkQueue.sql</Link>
+        </EmbeddedResource>
+        <EmbeddedResource Include="sql\dbo.WorkQueue_Enqueue.sql">
+            <Link>sql\dbo.WorkQueue_Enqueue.sql</Link>
+        </EmbeddedResource>
+        <EmbeddedResource Include="sql\dbo.WorkQueue_Dequeue.sql">
+            <Link>sql\dbo.WorkQueue_Dequeue.sql</Link>
+        </EmbeddedResource>
+        <EmbeddedResource Include="sql\dbo.WorkQueue_Dequeue_NonDestructive.sql">
+            <Link>sql\dbo.WorkQueue_Dequeue_NonDestructive.sql</Link>
+        </EmbeddedResource>
+    </ItemGroup>
+
+</Project>

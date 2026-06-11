@@ -97,6 +97,7 @@ cycle (within `MaxWaitTime`, default 5 s).
 - [Database Setup & Migrations](#database-setup--migrations)
 - [Work Queue (direct enqueue/dequeue)](#work-queue-direct-enqueuededequeue)
 - [Message Bus (publish/subscribe)](#message-bus-publishsubscribe)
+- [SQL Server Message Bus](#sql-server-message-bus)
 - [Redis Backend](#redis-backend)
 - [Dead-Letter Queue & Retries](#dead-letter-queue--retries)
 - [Configuration Reference](#configuration-reference)
@@ -268,6 +269,65 @@ Multiple consumers can be subscribed to the same message type; each receives a c
 ### Message type names as channels
 
 The message bus derives the channel name from `typeof(T).FullName`. Keep message type names under 500 characters (straightforward for any normal namespace depth).
+
+---
+
+## SQL Server Message Bus
+
+`TownSuite.WorkQueues.SqlServer` provides a `SqlServerMessageBus` that mirrors
+`PostgresMessageBus` but runs against SQL Server 2016+. It uses `UPDLOCK + ROWLOCK + READPAST`
+table hints so that multiple concurrent consumer instances claim disjoint sets of messages
+without blocking each other.
+
+### Installation
+
+```bash
+dotnet add package TownSuite.WorkQueues.SqlServer
+```
+
+### Automatic migrations
+
+`SqlServerMigrationHostedService` creates the `workqueue` table, filtered index, and stored
+procedures on first startup. All DDL is idempotent — safe to run against an existing database.
+Requires SQL Server 2016 or later (uses `CREATE OR ALTER PROCEDURE`).
+
+```csharp
+builder.Services.AddSingleton(new SqlServerTransportOptions
+{
+    ConnectionString      = "Server=.;Database=myapp;...",
+    AdminConnectionString = "Server=.;Database=myapp;...",   // optional; falls back to ConnectionString
+    Schema                = "dbo",
+    MaxRetries            = 3
+});
+
+builder.Services.AddSqlServerMigrationHostedService();
+```
+
+### Wiring up the bus
+
+```csharp
+builder.Services.AddSqlServerMessageBus((sp, bus) =>
+{
+    bus.Subscribe(sp.GetRequiredService<OrderConsumer>());
+});
+builder.Services.AddTransient<OrderConsumer>();
+builder.Services.AddHostedService<MessageBusHostedService>();
+```
+
+Consumer classes, the `MessageBusHostedService` wrapper, and publishing via `IMessageBus` are
+identical to the PostgreSQL backend — see [Message Bus (publish/subscribe)](#message-bus-publishsubscribe)
+and [WORKER_SERVICES.md](WORKER_SERVICES.md) for full examples.
+
+### `SqlServerTransportOptions` reference
+
+| Property | Default | Description |
+|---|---|---|
+| `ConnectionString` | — | Used for message reads, writes, and publishing |
+| `AdminConnectionString` | *(falls back to `ConnectionString`)* | Used by the migration service for DDL |
+| `Schema` | `"dbo"` | Schema containing the workqueue table |
+| `MaxBatchSize` | `100` (inherited) | Messages claimed per polling cycle |
+| `MaxWaitTime` | `5s` (inherited) | Pause when the queue is empty |
+| `MaxRetries` | `3` (inherited) | Attempts before dead-lettering |
 
 ---
 
