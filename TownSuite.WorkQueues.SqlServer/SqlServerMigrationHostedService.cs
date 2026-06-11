@@ -54,8 +54,7 @@ public class SqlServerMigrationHostedService : IHostedService
             {
                 // Replace the default schema token so a non-dbo schema is fully supported.
                 var sql = script
-                    .Replace("[dbo].", $"[{options.Schema}].")
-                    .Replace("dbo].[", $"{options.Schema}].[");
+                    .Replace("[dbo].", $"[{options.Schema}].");
 
                 foreach (var batch in SplitBatches(sql))
                 {

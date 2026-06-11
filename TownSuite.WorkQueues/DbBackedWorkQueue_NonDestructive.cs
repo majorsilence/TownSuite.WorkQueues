@@ -1,10 +1,9 @@
 using System.Data;
 using System.Data.Common;
-using System.Text.Json;
 
 namespace TownSuite.WorkQueues;
 
-public class DbBackedWorkQueue_NonDestructive : DbBackedWorkQueue, IWorkQueue
+public class DbBackedWorkQueue_NonDestructive : DbBackedWorkQueue
 {
     public override async Task<T> Dequeue<T>(string channel, IDbConnection con, IDbTransaction txn, int offset = 0)
     {

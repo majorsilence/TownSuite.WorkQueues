@@ -30,14 +30,12 @@ public static class RedisServiceExtensions
     {
         var opts = new RedisOptions();
         configure(opts);
-        services.AddSingleton(opts);
 
         services.AddSingleton<IMessageBus>(sp =>
         {
-            var redis   = sp.GetRequiredService<IConnectionMultiplexer>();
-            var options = sp.GetRequiredService<RedisOptions>();
-            var logger  = sp.GetRequiredService<ILogger<RedisMessageBus>>();
-            return new RedisMessageBus(redis, options, logger);
+            var redis  = sp.GetRequiredService<IConnectionMultiplexer>();
+            var logger = sp.GetRequiredService<ILogger<RedisMessageBus>>();
+            return new RedisMessageBus(redis, opts, logger);
         });
 
         return services;
@@ -53,13 +51,11 @@ public static class RedisServiceExtensions
     {
         var opts = new RedisOptions();
         configure(opts);
-        services.AddSingleton(opts);
 
         services.AddSingleton<IRedisWorkQueue>(sp =>
         {
-            var redis   = sp.GetRequiredService<IConnectionMultiplexer>();
-            var options = sp.GetRequiredService<RedisOptions>();
-            return new RedisWorkQueue(redis, options);
+            var redis = sp.GetRequiredService<IConnectionMultiplexer>();
+            return new RedisWorkQueue(redis, opts);
         });
 
         return services;

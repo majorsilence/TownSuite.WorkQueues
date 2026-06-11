@@ -26,7 +26,7 @@ sealed class TestContainerWrapper : IAsyncDisposable
         await Container.StartAsync();
         if (Container is MsSqlContainer)
         {
-            await BringUpDatabaseSqlServer(Container.GetConnectionString());
+            BringUpDatabaseSqlServer(Container.GetConnectionString());
         }
         else if (Container is PostgreSqlContainer)
         {
@@ -72,7 +72,7 @@ sealed class TestContainerWrapper : IAsyncDisposable
         throw new ArgumentException("Unsupported backend", nameof(backend));
     }
 
-    private static async Task BringUpDatabaseSqlServer(string connectionString)
+    private static void BringUpDatabaseSqlServer(string connectionString)
     {
         // run the scripts from the sql-server foler to create the database and the tables via SMO
         StringBuilder script = new StringBuilder();

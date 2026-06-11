@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace TownSuite.WorkQueues.Postgres
+﻿namespace TownSuite.WorkQueues.Postgres
 {
     public class SqlTransportOptions : BatchOptions
     {
@@ -20,7 +14,13 @@ namespace TownSuite.WorkQueues.Postgres
 
         /// <summary>
         /// Used to run migrations and manage the database schema.
+        /// Defaults to <see cref="ConnectionString"/> when not explicitly set.
         /// </summary>
-        public string AdminConnectionString { get; set; } = string.Empty;
+        public string AdminConnectionString
+        {
+            get => string.IsNullOrEmpty(_adminConnectionString) ? ConnectionString : _adminConnectionString;
+            set => _adminConnectionString = value;
+        }
+        private string _adminConnectionString = string.Empty;
     }
 }
