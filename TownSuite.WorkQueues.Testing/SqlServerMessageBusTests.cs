@@ -18,7 +18,7 @@ public class SqlServerMessageBusTests
         {
             ConnectionString = wrapper.Container.GetConnectionString(),
             Schema           = "dbo",
-            AllowEmptyBatches = true,
+            ContinuousPolling = true,
             MaxBatchSize     = 10,
             MaxWaitTime      = TimeSpan.FromSeconds(1)
         };
@@ -53,7 +53,7 @@ public class SqlServerMessageBusTests
         {
             ConnectionString = wrapper.Container.GetConnectionString(),
             Schema           = "dbo",
-            AllowEmptyBatches = true,
+            ContinuousPolling = true,
             MaxBatchSize     = 20,
             MaxWaitTime      = TimeSpan.FromSeconds(1)
         };

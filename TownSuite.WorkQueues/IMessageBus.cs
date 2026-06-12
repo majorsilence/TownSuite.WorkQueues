@@ -36,4 +36,19 @@ public interface IMessageBus : IAsyncDisposable
     /// <typeparam name="T">The message type to subscribe to.</typeparam>
     /// <param name="consumer">The consumer implementation.</param>
     void Subscribe<T>(IConsumer<T> consumer);
+
+    /// <summary>
+    /// Resets all dead-lettered messages of type <typeparamref name="T"/> so they will be
+    /// redelivered on the next polling cycle. Returns the number of messages replayed.
+    /// </summary>
+    /// <typeparam name="T">The message type whose dead-letter queue should be replayed.</typeparam>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    Task<int> ReplayDeadLettered<T>(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// <see langword="true"/> while the background polling loop is running.
+    /// Use this to implement health checks: a <see langword="false"/> value after startup
+    /// indicates the loop has stopped unexpectedly and the bus is no longer processing messages.
+    /// </summary>
+    bool IsPolling { get; }
 }

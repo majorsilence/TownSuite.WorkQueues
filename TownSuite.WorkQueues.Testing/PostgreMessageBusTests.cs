@@ -26,7 +26,7 @@ namespace TownSuite.WorkQueues.Testing
                 ConnectionString = wrapper.Container.GetConnectionString(),
                 AdminConnectionString = wrapper.Container.GetConnectionString(),
                 Schema = "public",   // matches what BringUpDatabasePostgresql creates
-                AllowEmptyBatches = true,
+                ContinuousPolling = true,
                 MaxBatchSize = 10,
                 MaxWaitTime = TimeSpan.FromSeconds(1)
             };

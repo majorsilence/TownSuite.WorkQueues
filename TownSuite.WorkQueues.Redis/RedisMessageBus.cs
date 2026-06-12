@@ -12,7 +12,7 @@ namespace TownSuite.WorkQueues.Redis;
 public class RedisMessageBus : IMessageBus
 {
     private readonly CancellationTokenSource _cts = new();
-    private readonly ConcurrentDictionary<Type, ConcurrentBag<Func<object, Task>>> _handlers = new();
+    private readonly ConcurrentDictionary<Type, ConcurrentDictionary<object, Func<object, Task>>> _handlers = new();
     private readonly ConcurrentDictionary<string, bool> _groupsEnsured = new();
     private readonly Task _pollingTask;
     private readonly ILogger _logger;
@@ -30,13 +30,16 @@ public class RedisMessageBus : IMessageBus
     }
 
     /// <inheritdoc />
+    public bool IsPolling => !_pollingTask.IsCompleted && !_pollingTask.IsFaulted;
+
+    /// <inheritdoc />
     public void Subscribe<T>(IConsumer<T> consumer)
     {
-        var bag = _handlers.GetOrAdd(typeof(T), _ => new ConcurrentBag<Func<object, Task>>());
-        bag.Add(async obj =>
+        var handlers = _handlers.GetOrAdd(typeof(T), _ => new ConcurrentDictionary<object, Func<object, Task>>());
+        handlers.TryAdd(consumer, async obj =>
         {
             if (obj is T message)
-                await consumer.Consume(new SimpleConsumeContext<T>(message));
+                await consumer.Consume(new SimpleConsumeContext<T>(message, _cts.Token));
         });
     }
 
@@ -53,6 +56,36 @@ public class RedisMessageBus : IMessageBus
         var payload = JsonSerializer.Serialize(message);
         var db = _redis.GetDatabase();
         await db.StreamAddAsync(StreamKey(channel), [new NameValueEntry("payload", payload)]);
+    }
+
+    /// <inheritdoc />
+    public async Task<int> ReplayDeadLettered<T>(CancellationToken cancellationToken = default)
+    {
+        var channel = typeof(T).FullName
+            ?? throw new InvalidOperationException($"Cannot determine channel name for type {typeof(T)}");
+
+        var streamKey = StreamKey(channel);
+        var deadKey = $"{streamKey}:dead";
+        var db = _redis.GetDatabase();
+
+        int replayed = 0;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var entries = await db.StreamReadAsync(deadKey, "0-0", count: 100);
+            if (entries == null || entries.Length == 0) break;
+
+            foreach (var entry in entries)
+            {
+                await db.StreamAddAsync(streamKey, entry.Values);
+                await db.StreamDeleteAsync(deadKey, new[] { entry.Id });
+                replayed++;
+            }
+
+            if (entries.Length < 100) break;
+        }
+
+        return replayed;
     }
 
     private async Task ProcessMessagesAsync()
@@ -85,7 +118,7 @@ public class RedisMessageBus : IMessageBus
 
     private async Task WaitAsync()
     {
-        if (!_options.AllowEmptyBatches)
+        if (!_options.ContinuousPolling)
             await Task.Delay(_options.MaxWaitTime, _cts.Token);
     }
 
@@ -207,7 +240,7 @@ public class RedisMessageBus : IMessageBus
             var message = LegacyJsonDeserializer.Deserialize((string)payloadField.Value!, type);
             if (message == null) return true;
 
-            await Task.WhenAll(handlers.Select(h => h(message)));
+            await Task.WhenAll(handlers.Values.Select(h => h(message)));
             return true;
         }
         catch (Exception ex)

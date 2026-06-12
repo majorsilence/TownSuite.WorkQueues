@@ -25,7 +25,7 @@ public class RetryAndDeadLetterTests
         {
             ConnectionString  = wrapper.Container.GetConnectionString(),
             Schema            = "public",
-            AllowEmptyBatches = true,
+            ContinuousPolling = true,
             MaxBatchSize      = 10,
             MaxWaitTime       = TimeSpan.FromMilliseconds(100),
             MaxRetries        = maxRetries
@@ -40,7 +40,7 @@ public class RetryAndDeadLetterTests
         await bus.Publish(new OrderSubmitted { OrderId = Guid.NewGuid(), ProductName = "Retry test" });
 
         // Allow all retry cycles to run. MaxRetries=3 means 3 delivery attempts; each
-        // cycle is near-instant when AllowEmptyBatches=true and the queue is not empty.
+        // cycle is near-instant when ContinuousPolling=true and the queue is not empty.
         await Task.Delay(4000);
 
         Assert.That(consumer.CallCount, Is.EqualTo(maxRetries),
@@ -70,7 +70,7 @@ public class RetryAndDeadLetterTests
         {
             ConnectionString  = wrapper.Container.GetConnectionString(),
             Schema            = "public",
-            AllowEmptyBatches = true,
+            ContinuousPolling = true,
             MaxBatchSize      = 10,
             MaxWaitTime       = TimeSpan.FromMilliseconds(100),
             MaxRetries        = maxRetries
@@ -107,7 +107,7 @@ public class RetryAndDeadLetterTests
         {
             ConnectionString  = wrapper.Container.GetConnectionString(),
             Schema            = "dbo",
-            AllowEmptyBatches = true,
+            ContinuousPolling = true,
             MaxBatchSize      = 10,
             MaxWaitTime       = TimeSpan.FromMilliseconds(100),
             MaxRetries        = maxRetries
@@ -148,7 +148,7 @@ public class RetryAndDeadLetterTests
         {
             ConnectionString  = wrapper.Container.GetConnectionString(),
             Schema            = "dbo",
-            AllowEmptyBatches = true,
+            ContinuousPolling = true,
             MaxBatchSize      = 10,
             MaxWaitTime       = TimeSpan.FromMilliseconds(100),
             MaxRetries        = maxRetries

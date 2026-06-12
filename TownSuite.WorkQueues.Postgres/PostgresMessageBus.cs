@@ -8,8 +8,8 @@ namespace TownSuite.WorkQueues.Postgres;
 public class PostgresMessageBus : IMessageBus
 {
     private readonly CancellationTokenSource _cts = new CancellationTokenSource();
-    private readonly ConcurrentDictionary<Type, ConcurrentBag<Func<object, Task>>> _handlers
-        = new ConcurrentDictionary<Type, ConcurrentBag<Func<object, Task>>>();
+    private readonly ConcurrentDictionary<Type, ConcurrentDictionary<object, Func<object, Task>>> _handlers
+        = new ConcurrentDictionary<Type, ConcurrentDictionary<object, Func<object, Task>>>();
     private readonly Task _pollingTask;
     private readonly ILogger _logger;
     private readonly SqlTransportOptions _options;
@@ -23,13 +23,16 @@ public class PostgresMessageBus : IMessageBus
         _pollingTask = Task.Run(async () => { await Task.Yield(); await ProcessMessagesAsync(); });
     }
 
+    /// <inheritdoc />
+    public bool IsPolling => !_pollingTask.IsCompleted && !_pollingTask.IsFaulted;
+
     public void Subscribe<T>(IConsumer<T> consumer)
     {
-        var bag = _handlers.GetOrAdd(typeof(T), _ => new ConcurrentBag<Func<object, Task>>());
-        bag.Add(async obj =>
+        var handlers = _handlers.GetOrAdd(typeof(T), _ => new ConcurrentDictionary<object, Func<object, Task>>());
+        handlers.TryAdd(consumer, async obj =>
         {
             if (obj is T message)
-                await consumer.Consume(new SimpleConsumeContext<T>(message));
+                await consumer.Consume(new SimpleConsumeContext<T>(message, _cts.Token));
         });
     }
 
@@ -49,6 +52,23 @@ public class PostgresMessageBus : IMessageBus
         cmd.Parameters.AddWithValue("@channel", channel);
         cmd.Parameters.AddWithValue("@payload", payload);
         await cmd.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<int> ReplayDeadLettered<T>(CancellationToken cancellationToken = default)
+    {
+        var channel = typeof(T).FullName
+            ?? throw new InvalidOperationException($"Cannot determine channel name for type {typeof(T)}");
+
+        await using var conn = new NpgsqlConnection(_options.ConnectionString);
+        await conn.OpenAsync(cancellationToken);
+        var sql = $"""
+            UPDATE {_options.Schema}.workqueue
+            SET failedat = NULL, retrycount = 0
+            WHERE channel = @channel AND failedat IS NOT NULL
+            """;
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("@channel", channel);
+        return await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private async Task ProcessMessagesAsync()
@@ -72,7 +92,7 @@ public class PostgresMessageBus : IMessageBus
 
     private async Task WaitAsync()
     {
-        if (!_options.AllowEmptyBatches)
+        if (!_options.ContinuousPolling)
             await Task.Delay(_options.MaxWaitTime, _cts.Token);
     }
 
@@ -176,7 +196,7 @@ public class PostgresMessageBus : IMessageBus
             return;
 
         var message = LegacyJsonDeserializer.Deserialize(msg.Payload, type);
-        await Task.WhenAll(handlers.Select(h => h(message!)));
+        await Task.WhenAll(handlers.Values.Select(h => h(message!)));
     }
 
     public async ValueTask DisposeAsync()

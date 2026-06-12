@@ -14,9 +14,14 @@ public class SimpleConsumeContext<T> : ConsumeContext<T>
     /// <inheritdoc/>
     public T Message { get; private set; }
 
+    /// <inheritdoc/>
+    public CancellationToken CancellationToken { get; }
+
     /// <param name="message">The message payload to expose via <see cref="Message"/>.</param>
-    public SimpleConsumeContext(T message)
+    /// <param name="cancellationToken">Bus shutdown token forwarded to the consumer.</param>
+    public SimpleConsumeContext(T message, CancellationToken cancellationToken = default)
     {
         Message = message;
+        CancellationToken = cancellationToken;
     }
 }

@@ -11,9 +11,16 @@
         /// </summary>
         public TimeSpan MaxWaitTime { get; set; } = TimeSpan.FromSeconds(5);
         /// <summary>
-        /// Whether to allow empty batches (i.e., processing when no messages are available).
+        /// Poll continuously without delay even when no messages are available.
+        /// When <see langword="false"/> (the default) the bus waits <see cref="MaxWaitTime"/> between
+        /// empty polls, which reduces CPU and database load. Set to <see langword="true"/> only
+        /// in tests or latency-critical scenarios.
         /// </summary>
-        public bool AllowEmptyBatches { get; set; } = false;
+        public bool ContinuousPolling { get; set; } = false;
+
+        /// <summary>Whether to allow empty batches (i.e., processing when no messages are available).</summary>
+        [Obsolete("Use ContinuousPolling instead. AllowEmptyBatches will be removed in a future version.")]
+        public bool AllowEmptyBatches { get => ContinuousPolling; set => ContinuousPolling = value; }
 
         /// <summary>
         /// Maximum number of delivery attempts before a message is moved to the dead-letter state.

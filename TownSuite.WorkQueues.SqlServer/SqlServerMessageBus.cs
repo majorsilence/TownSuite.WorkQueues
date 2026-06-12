@@ -14,7 +14,7 @@ namespace TownSuite.WorkQueues.SqlServer;
 public class SqlServerMessageBus : IMessageBus
 {
     private readonly CancellationTokenSource _cts = new();
-    private readonly ConcurrentDictionary<Type, ConcurrentBag<Func<object, Task>>> _handlers = new();
+    private readonly ConcurrentDictionary<Type, ConcurrentDictionary<object, Func<object, Task>>> _handlers = new();
     private readonly Task _pollingTask;
     private readonly ILogger _logger;
     private readonly SqlServerTransportOptions _options;
@@ -29,13 +29,16 @@ public class SqlServerMessageBus : IMessageBus
     }
 
     /// <inheritdoc />
+    public bool IsPolling => !_pollingTask.IsCompleted && !_pollingTask.IsFaulted;
+
+    /// <inheritdoc />
     public void Subscribe<T>(IConsumer<T> consumer)
     {
-        var bag = _handlers.GetOrAdd(typeof(T), _ => new ConcurrentBag<Func<object, Task>>());
-        bag.Add(async obj =>
+        var handlers = _handlers.GetOrAdd(typeof(T), _ => new ConcurrentDictionary<object, Func<object, Task>>());
+        handlers.TryAdd(consumer, async obj =>
         {
             if (obj is T message)
-                await consumer.Consume(new SimpleConsumeContext<T>(message));
+                await consumer.Consume(new SimpleConsumeContext<T>(message, _cts.Token));
         });
     }
 
@@ -60,6 +63,25 @@ public class SqlServerMessageBus : IMessageBus
         await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    /// <inheritdoc />
+    public async Task<int> ReplayDeadLettered<T>(CancellationToken cancellationToken = default)
+    {
+        var channel = typeof(T).FullName
+            ?? throw new InvalidOperationException($"Cannot determine channel name for {typeof(T)}");
+
+        await using var conn = new SqlConnection(_options.ConnectionString);
+        await conn.OpenAsync(cancellationToken);
+
+        var sql = $"""
+            UPDATE [{_options.Schema}].[workqueue]
+            SET [failedat] = NULL, [retrycount] = 0
+            WHERE [channel] = @channel AND [failedat] IS NOT NULL
+            """;
+        await using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("@channel", channel);
+        return await cmd.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     private async Task ProcessMessagesAsync()
     {
         while (!_cts.Token.IsCancellationRequested)
@@ -81,7 +103,7 @@ public class SqlServerMessageBus : IMessageBus
 
     private async Task WaitAsync()
     {
-        if (!_options.AllowEmptyBatches)
+        if (!_options.ContinuousPolling)
             await Task.Delay(_options.MaxWaitTime, _cts.Token);
     }
 
@@ -196,7 +218,7 @@ public class SqlServerMessageBus : IMessageBus
         if (!_handlers.TryGetValue(type, out var handlers)) return;
 
         var message = LegacyJsonDeserializer.Deserialize(msg.Payload, type);
-        await Task.WhenAll(handlers.Select(h => h(message!)));
+        await Task.WhenAll(handlers.Values.Select(h => h(message!)));
     }
 
     public async ValueTask DisposeAsync()
