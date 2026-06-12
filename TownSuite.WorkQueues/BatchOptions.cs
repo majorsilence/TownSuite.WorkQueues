@@ -1,5 +1,9 @@
 ﻿namespace TownSuite.WorkQueues
 {
+    /// <summary>
+    /// Shared configuration for the polling behaviour common to all message bus backends
+    /// (PostgreSQL, SQL Server, Redis). All three transport options classes inherit from this.
+    /// </summary>
     public class BatchOptions
     {
         /// <summary>

@@ -3,6 +3,16 @@ using System.Data.Common;
 
 namespace TownSuite.WorkQueues;
 
+/// <summary>
+/// Non-destructive variant of <see cref="DbBackedWorkQueue"/>. Dequeued rows are
+/// <strong>kept</strong> in the table and stamped with <c>timeprocessedutc</c> on commit
+/// rather than deleted. Use this when you need an audit trail or the ability to reprocess rows.
+/// </summary>
+/// <remarks>
+/// Internally calls the <c>workqueue_dequeue_nondestructive</c> stored procedure.
+/// Multiple workers can safely share a channel by incrementing the <c>offset</c> parameter
+/// when a row cannot be processed.
+/// </remarks>
 public class DbBackedWorkQueue_NonDestructive : DbBackedWorkQueue
 {
     [return: System.Diagnostics.CodeAnalysis.MaybeNull]

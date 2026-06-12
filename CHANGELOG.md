@@ -4,6 +4,64 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.3.0] — 2026-06-12
+
+### Bug fixes
+
+- **Duplicate `Subscribe` calls no longer cause double-dispatch** — Handler storage changed from `ConcurrentBag<Func>` to `ConcurrentDictionary<object, Func>` keyed on the consumer instance. Calling `bus.Subscribe(consumer)` twice silently no-ops instead of registering the same handler twice and delivering every message twice.
+
+- **`AllowEmptyBatches` was not honoured** — The between-poll `Task.Delay` was always executed regardless of the option value. Fixed by extracting a `WaitAsync()` helper in each bus that checks the flag before delaying.
+
+- **`LegacyJsonDeserializer` `$values` false positives** — The fallback that unwrapped `$values` arrays could trigger on malformed payloads that contained `$values` without `$type`. The guard now requires both fields to be present before attempting the fallback.
+
+### New features
+
+- **`IMessageBus.IsPolling`** — New read-only property on the interface and all three bus implementations. Returns `true` while the background polling loop is alive and `false` if it has stopped unexpectedly. Use this to implement health checks:
+  ```csharp
+  builder.Services.AddHealthChecks()
+      .AddCheck("message-bus", () =>
+          sp.GetRequiredService<IMessageBus>().IsPolling
+              ? HealthCheckResult.Healthy()
+              : HealthCheckResult.Unhealthy("Bus polling loop has stopped"));
+  ```
+
+- **`IMessageBus.ReplayDeadLettered<T>()`** — Resets `failedat` and `retrycount` for all dead-lettered messages of a given type so they are redelivered on the next polling cycle. Returns the count of rows (or stream entries for Redis) that were replayed:
+  ```csharp
+  int replayed = await bus.ReplayDeadLettered<OrderSubmitted>();
+  ```
+  The Redis implementation reads the `{stream}:dead` key and re-enqueues each entry to the main stream.
+
+- **`ConsumeContext<T>.CancellationToken`** — New default interface property (returns `CancellationToken.None` for custom implementations). All three bus backends now pass their shutdown `CancellationToken` to consumers via `SimpleConsumeContext<T>`, so consumers doing async I/O can observe graceful shutdown:
+  ```csharp
+  public async Task Consume(ConsumeContext<OrderSubmitted> context)
+  {
+      await _db.SaveAsync(context.Message, context.CancellationToken);
+  }
+  ```
+
+- **`IRedisWorkQueue` gains `CancellationToken` parameters** — `EnqueueAsync` and `DequeueAsync` now accept an optional `CancellationToken cancellationToken = default`. No breaking change — existing callers compile unchanged.
+
+- **`BatchOptions.ContinuousPolling`** renames `AllowEmptyBatches`. The old name is kept as an `[Obsolete]` computed alias that redirects to `ContinuousPolling`. The new name accurately describes the behaviour: "poll again immediately without waiting `MaxWaitTime` when the last batch was empty."
+
+### Production readiness
+
+- **`Task.Yield()` in bus constructors** — Ensures `Subscribe()` calls made immediately after `new PostgresMessageBus(...)` are registered before the first polling cycle executes, eliminating a rare race where the loop could fire before any handlers were registered.
+
+- **`RedisOptions.ConsumerName` default includes `ProcessId`** — Default changed from `Environment.MachineName` to `$"{MachineName}-{ProcessId}"`. Multiple processes on the same host no longer share a pending-entry list, which previously caused incorrect retry counts and missed reclaims.
+
+- **`AdminConnectionString` fallback** — `SqlTransportOptions` (Postgres) and `SqlServerTransportOptions` now fall back to `ConnectionString` when `AdminConnectionString` is not set. Migration services no longer require the admin string to be specified separately.
+
+- **`AddPostgresMessageBus` DI extension added** — `PostgresMigrationHostedServiceExtensions` now exposes `AddPostgresMessageBus(Action<IServiceProvider, PostgresMessageBus>)`, matching the pattern already present in the SQL Server package.
+
+- **`AddRedisMessageBus` optional `subscribe` callback** — The DI helper now accepts an optional `Action<IServiceProvider, RedisMessageBus>? subscribe` parameter for registering consumers in the factory, matching the Postgres/SqlServer pattern.
+
+### Documentation
+
+- XML documentation added to `MessageDto`, `DbBackedWorkQueue`, `DbBackedWorkQueue_NonDestructive`, and `BatchOptions` classes (previously undocumented).
+- README updated: `ContinuousPolling` replaces `AllowEmptyBatches` in config table; `ReplayDeadLettered<T>` and health check patterns added to Dead-Letter section; `ConsumerName` default corrected; bus instantiation examples updated to `await using`.
+
+---
+
 ## [2.2.0] — 2026-06-10
 
 ### New features

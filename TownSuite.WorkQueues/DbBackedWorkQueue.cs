@@ -4,6 +4,16 @@ using System.Text.Json;
 
 namespace TownSuite.WorkQueues;
 
+/// <summary>
+/// SQL-backed work queue that uses the <c>workqueue_enqueue</c> and <c>workqueue_dequeue</c>
+/// stored procedures. Dequeued rows are <strong>deleted</strong> on commit, giving exactly-once
+/// delivery within a transaction. Use <see cref="DbBackedWorkQueue_NonDestructive"/> when you
+/// need to keep a history of processed rows.
+/// </summary>
+/// <remarks>
+/// Compatible with both PostgreSQL and SQL Server — the stored procedures are supplied via the
+/// migration services in the respective transport packages.
+/// </remarks>
 public class DbBackedWorkQueue : IWorkQueue
 {
     // http://rusanu.com/2010/03/26/using-tables-as-queues/

@@ -100,6 +100,8 @@ cycle (within `MaxWaitTime`, default 5 s).
 - [SQL Server Message Bus](#sql-server-message-bus)
 - [Redis Backend](#redis-backend)
 - [Dead-Letter Queue & Retries](#dead-letter-queue--retries)
+  - [Programmatic replay via ReplayDeadLettered\<T\>](#programmatic-replay-via-replaydeadletteredt)
+  - [Checking bus health with IsPolling](#checking-bus-health-with-ispolling)
 - [Configuration Reference](#configuration-reference)
 - [Running the Tests](#running-the-tests)
 - [Upgrading from Earlier Versions](#upgrading-from-earlier-versions)
@@ -251,7 +253,7 @@ var options = new SqlTransportOptions
     MaxRetries            = 3
 };
 
-using var bus = new PostgresMessageBus(options, logger);
+await using var bus = new PostgresMessageBus(options, logger);
 
 bus.Subscribe(new OrderConsumer());
 
@@ -377,7 +379,7 @@ var options = new RedisOptions
     MaxRetries    = 3
 };
 
-using var bus = new RedisMessageBus(mux, options, logger);
+await using var bus = new RedisMessageBus(mux, options, logger);
 bus.Subscribe(new OrderConsumer());
 
 await bus.Publish(new OrderSubmitted { OrderId = Guid.NewGuid() });
@@ -417,7 +419,7 @@ builder.Services.AddRedisWorkQueue(opts => opts.KeyPrefix = "myapp");
 |---|---|---|
 | `KeyPrefix` | `"workqueue"` | Prefix for all Redis keys |
 | `ConsumerGroup` | `"default"` | Stream consumer group name |
-| `ConsumerName` | `Environment.MachineName` | Unique identity within the group |
+| `ConsumerName` | `{MachineName}-{ProcessId}` | Unique identity within the group. Includes the process ID so multiple processes on the same host maintain separate pending-entry lists. |
 | `ReclaimIdleTime` | `MaxWaitTime × 3` | Idle threshold before a pending message is reclaimed |
 | `MaxBatchSize` | `100` (inherited) | Messages read per polling cycle |
 | `MaxWaitTime` | `5s` (inherited) | Pause when the stream is empty |
@@ -433,16 +435,44 @@ When a consumer throws, the message is **not** marked as processed. Instead:
 2. On the next polling cycle the message is picked up and retried.
 3. Once `retrycount >= MaxRetries` (default `3`), the row's `failedat` column is set to the current timestamp and the message is permanently excluded from polling.
 
-Dead-lettered rows (`failedat IS NOT NULL`) remain in the table for inspection and manual replay. No separate table is required.
+Dead-lettered rows (`failedat IS NOT NULL`) remain in the table for inspection and replay. No separate table is required.
+
+### Inspecting and replaying via SQL
 
 ```sql
 -- inspect failed messages
 SELECT * FROM transport.workqueue WHERE failedat IS NOT NULL ORDER BY failedat DESC;
 
--- manually replay a failed message (clears dead-letter state)
+-- manually replay a single failed message (clears dead-letter state)
 UPDATE transport.workqueue
 SET failedat = NULL, retrycount = 0
 WHERE id = 42;
+```
+
+### Programmatic replay via `ReplayDeadLettered<T>`
+
+```csharp
+// Resets failedat and retrycount for all dead-lettered messages of this type.
+// Returns the number of messages queued for redelivery.
+int replayed = await bus.ReplayDeadLettered<OrderSubmitted>();
+```
+
+For Redis, this reads entries from the `{prefix}:stream:{type}:dead` key and re-enqueues them to the main stream.
+
+### Checking bus health with `IsPolling`
+
+`IMessageBus.IsPolling` is `true` while the background polling loop is alive. Wire it into ASP.NET Core health checks to detect a silently-stopped bus:
+
+```csharp
+// In Program.cs
+builder.Services.AddHealthChecks()
+    .AddCheck("message-bus", () =>
+    {
+        var bus = app.Services.GetRequiredService<IMessageBus>();
+        return bus.IsPolling
+            ? HealthCheckResult.Healthy()
+            : HealthCheckResult.Unhealthy("Bus polling loop has stopped — no messages will be processed");
+    });
 ```
 
 ---
@@ -455,7 +485,7 @@ WHERE id = 42;
 |---|---|---|
 | `MaxBatchSize` | `100` | Maximum messages claimed per polling cycle |
 | `MaxWaitTime` | `5s` | How long to pause when the queue is empty before polling again |
-| `AllowEmptyBatches` | `false` | Reserved for future use |
+| `ContinuousPolling` | `false` | When `true`, skips the `MaxWaitTime` delay between empty polls. Use only in tests or latency-critical scenarios — otherwise leaves CPU and database idle time on the table. |
 | `MaxRetries` | `3` | Delivery attempts before a message is dead-lettered |
 
 ### `SqlTransportOptions` (extends `BatchOptions`)

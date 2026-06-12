@@ -18,24 +18,26 @@ public class RedisWorkQueue : IRedisWorkQueue
     }
 
     /// <inheritdoc />
-    public async Task EnqueueAsync<T>(string channel, T payload)
+    public async Task EnqueueAsync<T>(string channel, T payload, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(channel))
             throw new ArgumentException("Channel must not be empty.", nameof(channel));
         if (channel.Length > 500)
             throw new WorkQueuesException("Channel must not exceed 500 characters.");
 
+        cancellationToken.ThrowIfCancellationRequested();
         var json = JsonSerializer.Serialize(payload);
         var db = _redis.GetDatabase();
         await db.ListLeftPushAsync(ListKey(channel), json);
     }
 
     /// <inheritdoc />
-    public async Task<T?> DequeueAsync<T>(string channel)
+    public async Task<T?> DequeueAsync<T>(string channel, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(channel))
             throw new ArgumentException("Channel must not be empty.", nameof(channel));
 
+        cancellationToken.ThrowIfCancellationRequested();
         var db = _redis.GetDatabase();
         var value = await db.ListRightPopAsync(ListKey(channel));
 
