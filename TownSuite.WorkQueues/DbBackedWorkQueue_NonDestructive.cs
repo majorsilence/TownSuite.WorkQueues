@@ -5,6 +5,7 @@ namespace TownSuite.WorkQueues;
 
 public class DbBackedWorkQueue_NonDestructive : DbBackedWorkQueue
 {
+    [return: System.Diagnostics.CodeAnalysis.MaybeNull]
     public override async Task<T> Dequeue<T>(string channel, IDbConnection con, IDbTransaction txn, int offset = 0)
     {
 #if NET8_0_OR_GREATER
@@ -19,9 +20,12 @@ public class DbBackedWorkQueue_NonDestructive : DbBackedWorkQueue
         if (txn is not DbTransaction transaction)
             throw new WorkQueuesException("txn must be a DbTransaction");
 
+#pragma warning disable CS8602 // [MaybeNull] — caller contract matches callee, null flow is intentional
         return await Dequeue<T>(channel, connection, transaction, offset);
+#pragma warning restore CS8602
     }
 
+    [return: System.Diagnostics.CodeAnalysis.MaybeNull]
     public override async Task<T> Dequeue<T>(string channel, DbConnection con, DbTransaction txn, int offset = 0)
     {
 #if NET8_0_OR_GREATER

@@ -41,8 +41,10 @@ public interface IWorkQueue
     /// message needs to be skipped temporarily.
     /// </param>
     /// <returns>The deserialised payload, or <see langword="default"/> when the queue is empty.</returns>
+    [return: System.Diagnostics.CodeAnalysis.MaybeNull]
     Task<T> Dequeue<T>(string channel, IDbConnection con, IDbTransaction txn, int offset = 0);
 
     /// <inheritdoc cref="Dequeue{T}(string,IDbConnection,IDbTransaction,int)"/>
+    [return: System.Diagnostics.CodeAnalysis.MaybeNull]
     Task<T> Dequeue<T>(string channel, DbConnection con, DbTransaction txn, int offset = 0);
 }

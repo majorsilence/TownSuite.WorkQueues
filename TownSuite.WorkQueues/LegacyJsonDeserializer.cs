@@ -26,7 +26,7 @@ internal static class LegacyJsonDeserializer
         {
             return JsonSerializer.Deserialize<T>(json);
         }
-        catch (JsonException) when (json.Contains("\"$values\""))
+        catch (JsonException) when (json.Contains("\"$type\"") && json.Contains("\"$values\""))
         {
             return (T?)ExtractValues(json, typeof(T));
         }
@@ -38,7 +38,7 @@ internal static class LegacyJsonDeserializer
         {
             return JsonSerializer.Deserialize(json, type);
         }
-        catch (JsonException) when (json.Contains("\"$values\""))
+        catch (JsonException) when (json.Contains("\"$type\"") && json.Contains("\"$values\""))
         {
             return ExtractValues(json, type);
         }

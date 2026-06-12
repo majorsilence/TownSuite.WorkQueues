@@ -61,6 +61,7 @@ public class DbBackedWorkQueue : IWorkQueue
         return rowsAffected > 0;
     }
 
+    [return: System.Diagnostics.CodeAnalysis.MaybeNull]
     public virtual async Task<T> Dequeue<T>(string channel, IDbConnection con, IDbTransaction txn, int offset = 0)
     {
         if (con is null)
@@ -72,9 +73,12 @@ public class DbBackedWorkQueue : IWorkQueue
         if (txn is not DbTransaction transaction)
             throw new WorkQueuesException("txn must be a DbTransaction");
 
+#pragma warning disable CS8602 // [MaybeNull] — caller contract matches callee, null flow is intentional
         return await Dequeue<T>(channel, connection, transaction, offset);
+#pragma warning restore CS8602
     }
 
+    [return: System.Diagnostics.CodeAnalysis.MaybeNull]
     public virtual async Task<T> Dequeue<T>(string channel, DbConnection con, DbTransaction txn, int offset = 0)
     {
         if (txn == null)
