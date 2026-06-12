@@ -218,6 +218,144 @@ public class RetryAndDeadLetterTests
         Assert.That(pending.PendingMessageCount, Is.EqualTo(0),
             "No pending messages should remain after dead-lettering.");
     }
+    // ── ReplayDeadLettered — PostgreSQL ──────────────────────────────────────────
+
+    [Test]
+    public async Task Postgres_ReplayDeadLettered_ResetsMessageForRedelivery()
+    {
+        await using var wrapper = await TestContainerWrapper.CreateContainerAsync("postgres");
+        await wrapper.StartAsync();
+
+        // MaxRetries=1 → dead-lettered after a single failed attempt (fastest path).
+        var options = new SqlTransportOptions
+        {
+            ConnectionString  = wrapper.Container.GetConnectionString(),
+            Schema            = "public",
+            ContinuousPolling = true,
+            MaxBatchSize      = 10,
+            MaxWaitTime       = TimeSpan.FromMilliseconds(100),
+            MaxRetries        = 1
+        };
+
+        await using var bus = new PostgresMessageBus(
+            options, Moq.Mock.Of<ILogger<PostgresMessageBus>>());
+        bus.Subscribe(new AlwaysThrowingConsumer<OrderSubmitted>());
+        await bus.Publish(new OrderSubmitted { OrderId = Guid.NewGuid(), ProductName = "replay-test" });
+
+        // Wait for dead-lettering.
+        await Task.Delay(2000);
+
+        await using var cn = wrapper.CreateConnection();
+        await cn.OpenAsync();
+        var before = await cn.QueryFirstAsync(
+            "SELECT retrycount, failedat FROM public.workqueue WHERE channel = @ch",
+            new { ch = typeof(OrderSubmitted).FullName });
+        Assert.That((DateTime?)before.failedat, Is.Not.Null, "Message must be dead-lettered before replay.");
+
+        // Stop the bus so the polling loop doesn't immediately re-dead-letter the replayed message.
+        await bus.DisposeAsync();
+
+        int replayed = await bus.ReplayDeadLettered<OrderSubmitted>();
+
+        Assert.That(replayed, Is.EqualTo(1), "One message should have been replayed.");
+
+        var after = await cn.QueryFirstAsync(
+            "SELECT retrycount, failedat FROM public.workqueue WHERE channel = @ch",
+            new { ch = typeof(OrderSubmitted).FullName });
+        Assert.That((DateTime?)after.failedat, Is.Null,     "failedat should be cleared after replay.");
+        Assert.That((int)after.retrycount,     Is.EqualTo(0), "retrycount should be reset to 0 after replay.");
+    }
+
+    // ── ReplayDeadLettered — SQL Server ───────────────────────────────────────
+
+    [Test]
+    public async Task SqlServer_ReplayDeadLettered_ResetsMessageForRedelivery()
+    {
+        await using var wrapper = await TestContainerWrapper.CreateContainerAsync("mssql");
+        await wrapper.StartAsync();
+
+        var options = new SqlServerTransportOptions
+        {
+            ConnectionString  = wrapper.Container.GetConnectionString(),
+            Schema            = "dbo",
+            ContinuousPolling = true,
+            MaxBatchSize      = 10,
+            MaxWaitTime       = TimeSpan.FromMilliseconds(100),
+            MaxRetries        = 1
+        };
+
+        await using var bus = new SqlServerMessageBus(
+            options, Moq.Mock.Of<ILogger<SqlServerMessageBus>>());
+        bus.Subscribe(new AlwaysThrowingConsumer<OrderSubmitted>());
+        await bus.Publish(new OrderSubmitted { OrderId = Guid.NewGuid(), ProductName = "replay-test" });
+
+        await Task.Delay(2000);
+
+        await using var cn = wrapper.CreateConnection();
+        await cn.OpenAsync();
+        var before = await cn.QueryFirstAsync(
+            "SELECT retrycount, failedat FROM [dbo].[workqueue] WHERE channel = @ch",
+            new { ch = typeof(OrderSubmitted).FullName });
+        Assert.That((DateTime?)before.failedat, Is.Not.Null, "Message must be dead-lettered before replay.");
+
+        await bus.DisposeAsync();
+
+        int replayed = await bus.ReplayDeadLettered<OrderSubmitted>();
+
+        Assert.That(replayed, Is.EqualTo(1), "One message should have been replayed.");
+
+        var after = await cn.QueryFirstAsync(
+            "SELECT retrycount, failedat FROM [dbo].[workqueue] WHERE channel = @ch",
+            new { ch = typeof(OrderSubmitted).FullName });
+        Assert.That((DateTime?)after.failedat, Is.Null,      "failedat should be cleared after replay.");
+        Assert.That((int)after.retrycount,     Is.EqualTo(0), "retrycount should be reset to 0 after replay.");
+    }
+
+    // ── ReplayDeadLettered — Redis ────────────────────────────────────────────
+
+    [Test]
+    public async Task Redis_ReplayDeadLettered_ReenqueuesEntriesFromDeadStream()
+    {
+        await using var container = new RedisBuilder().Build();
+        await container.StartAsync();
+
+        using var mux = ConnectionMultiplexer.Connect(container.GetConnectionString());
+
+        var options = new RedisOptions
+        {
+            KeyPrefix       = "replaytest",
+            ConsumerGroup   = "test-group",
+            ConsumerName    = "test-consumer",
+            MaxBatchSize    = 10,
+            MaxWaitTime     = TimeSpan.FromMilliseconds(100),
+            MaxRetries      = 1,
+            ReclaimIdleTime = TimeSpan.FromMilliseconds(200)
+        };
+
+        // MaxRetries=1: first delivery fails → immediate dead-letter after first XAUTOCLAIM cycle.
+        var bus = new RedisMessageBus(mux, options, Moq.Mock.Of<ILogger<RedisMessageBus>>());
+        bus.Subscribe(new AlwaysThrowingConsumer<OrderSubmitted>());
+        await bus.Publish(new OrderSubmitted { OrderId = Guid.NewGuid(), ProductName = "redis-replay" });
+
+        // Wait for dead-lettering (first poll + one XAUTOCLAIM after ReclaimIdleTime=200ms).
+        await Task.Delay(4000);
+
+        var db        = mux.GetDatabase();
+        var streamKey = $"replaytest:stream:{typeof(OrderSubmitted).FullName}";
+        var deadKey   = $"{streamKey}:dead";
+
+        Assert.That(await db.StreamLengthAsync(deadKey), Is.EqualTo(1),
+            "Dead-letter stream should have one entry before replay.");
+
+        // Stop the polling loop before replaying so the entry is not immediately re-dead-lettered.
+        await bus.DisposeAsync();
+
+        int replayed = await bus.ReplayDeadLettered<OrderSubmitted>();
+
+        Assert.That(replayed, Is.EqualTo(1), "One entry should have been replayed.");
+        Assert.That(await db.StreamLengthAsync(deadKey), Is.EqualTo(0),
+            "Dead-letter stream should be empty after replay.");
+    }
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
