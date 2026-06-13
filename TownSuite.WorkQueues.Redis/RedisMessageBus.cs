@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 using System.Collections.Concurrent;
@@ -12,18 +13,23 @@ namespace TownSuite.WorkQueues.Redis;
 public class RedisMessageBus : IMessageBus
 {
     private readonly CancellationTokenSource _cts = new();
-    private readonly ConcurrentDictionary<Type, ConcurrentDictionary<object, Func<object, Task>>> _handlers = new();
+    private readonly ConcurrentDictionary<Type, ConcurrentDictionary<object, Func<object, Guid, DateTimeOffset, Task>>> _handlers = new();
+    private readonly ConcurrentDictionary<Type, ConcurrentDictionary<object, Func<object, Task>>> _faultHandlers = new();
+    private readonly ConcurrentDictionary<Type, Func<string, Exception, int, Task>> _faultDispatchers = new();
     private readonly ConcurrentDictionary<string, bool> _groupsEnsured = new();
     private readonly Task _pollingTask;
     private readonly ILogger _logger;
     private readonly IConnectionMultiplexer _redis;
     private readonly RedisOptions _options;
+    private readonly IServiceProvider? _serviceProvider;
 
-    public RedisMessageBus(IConnectionMultiplexer redis, RedisOptions options, ILogger logger)
+    public RedisMessageBus(IConnectionMultiplexer redis, RedisOptions options, ILogger logger,
+        IServiceProvider? serviceProvider = null)
     {
-        _redis = redis ?? throw new ArgumentNullException(nameof(redis));
+        _redis = redis   ?? throw new ArgumentNullException(nameof(redis));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _serviceProvider = serviceProvider;
         // Yield to the caller so Subscribe() calls made immediately after construction
         // are registered before the first poll cycle runs.
         _pollingTask = Task.Run(async () => { await Task.Yield(); await ProcessMessagesAsync(); });
@@ -35,11 +41,77 @@ public class RedisMessageBus : IMessageBus
     /// <inheritdoc />
     public void Subscribe<T>(IConsumer<T> consumer)
     {
-        var handlers = _handlers.GetOrAdd(typeof(T), _ => new ConcurrentDictionary<object, Func<object, Task>>());
-        handlers.TryAdd(consumer, async obj =>
+        var handlers = _handlers.GetOrAdd(typeof(T),
+            _ => new ConcurrentDictionary<object, Func<object, Guid, DateTimeOffset, Task>>());
+        handlers.TryAdd(consumer, async (obj, messageId, sentTime) =>
         {
             if (obj is T message)
-                await consumer.Consume(new SimpleConsumeContext<T>(message, _cts.Token));
+                await consumer.Consume(new SimpleConsumeContext<T>(message, _cts.Token, messageId, sentTime));
+        });
+        EnsureFaultDispatcher<T>();
+    }
+
+    /// <summary>
+    /// Registers a scoped consumer resolved fresh from an <see cref="IServiceScope"/> on every
+    /// message dispatch. Requires <see cref="IServiceProvider"/> to have been passed to the
+    /// constructor (automatically supplied by
+    /// <see cref="RedisServiceExtensions.AddRedisMessageBus"/>).
+    /// </summary>
+    public void Subscribe<TMessage, TConsumer>() where TConsumer : class, IConsumer<TMessage>
+    {
+        if (_serviceProvider == null)
+            throw new InvalidOperationException(
+                "Scoped consumer registration requires IServiceProvider. " +
+                "Pass serviceProvider to the RedisMessageBus constructor, " +
+                "or use the AddRedisMessageBus DI extension.");
+
+        var handlers = _handlers.GetOrAdd(typeof(TMessage),
+            _ => new ConcurrentDictionary<object, Func<object, Guid, DateTimeOffset, Task>>());
+        handlers.TryAdd(typeof(TConsumer), async (obj, messageId, sentTime) =>
+        {
+            if (obj is TMessage message)
+            {
+                await using var scope = _serviceProvider.CreateAsyncScope();
+                var consumer = scope.ServiceProvider.GetRequiredService<TConsumer>();
+                await consumer.Consume(new SimpleConsumeContext<TMessage>(message, _cts.Token, messageId, sentTime));
+            }
+        });
+        EnsureFaultDispatcher<TMessage>();
+    }
+
+    /// <inheritdoc />
+    public void SubscribeFault<T>(IConsumer<Fault<T>> consumer)
+    {
+        var handlers = _faultHandlers.GetOrAdd(typeof(T),
+            _ => new ConcurrentDictionary<object, Func<object, Task>>());
+        handlers.TryAdd(consumer, async obj =>
+        {
+            if (obj is Fault<T> fault)
+                await consumer.Consume(new SimpleConsumeContext<Fault<T>>(fault, _cts.Token));
+        });
+    }
+
+    private void EnsureFaultDispatcher<T>()
+    {
+        _faultDispatchers.TryAdd(typeof(T), async (payload, ex, attemptCount) =>
+        {
+            if (!_faultHandlers.TryGetValue(typeof(T), out var handlers) || handlers.IsEmpty)
+                return;
+
+            var original = LegacyJsonDeserializer.Deserialize(payload, typeof(T));
+            if (original is not T typedOriginal) return;
+
+            var fault = new Fault<T>
+            {
+                OriginalMessage  = typedOriginal,
+                ExceptionType    = ex.GetType().FullName ?? ex.GetType().Name,
+                ExceptionMessage = ex.Message,
+                StackTrace       = ex.StackTrace,
+                FaultedAt        = DateTimeOffset.UtcNow,
+                AttemptCount     = attemptCount
+            };
+
+            await Task.WhenAll(handlers.Values.Select(h => h(fault)));
         });
     }
 
@@ -54,9 +126,21 @@ public class RedisMessageBus : IMessageBus
 
         cancellationToken.ThrowIfCancellationRequested();
         var payload = JsonSerializer.Serialize(message);
+        var messageId = Guid.NewGuid().ToString();
         var db = _redis.GetDatabase();
-        await db.StreamAddAsync(StreamKey(channel), [new NameValueEntry("payload", payload)]);
+        await db.StreamAddAsync(StreamKey(channel),
+            new[] { new NameValueEntry("payload", payload), new NameValueEntry("messageid", messageId) });
     }
+
+    /// <summary>
+    /// Scheduled/delayed delivery is not supported by the Redis transport.
+    /// Use the Postgres or SQL Server transport for this feature.
+    /// </summary>
+    /// <exception cref="NotSupportedException">Always thrown.</exception>
+    public Task Publish<T>(T message, DateTimeOffset deliverAfter, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException(
+            "The Redis transport does not support scheduled/delayed delivery. " +
+            "Use the Postgres or SQL Server transport, or implement a scheduler service that publishes at the target time.");
 
     /// <inheritdoc />
     public async Task<int> ReplayDeadLettered<T>(CancellationToken cancellationToken = default)
@@ -201,6 +285,28 @@ public class RedisMessageBus : IMessageBus
                 await db.StreamAddAsync($"{streamKey}:dead", entry.Values);
                 await db.StreamAcknowledgeAsync(streamKey, _options.ConsumerGroup, entry.Id);
                 await db.HashDeleteAsync(retryHashKey, msgIdField);
+
+                // Dispatch fault notification. The Redis transport does not retain the original
+                // exception across retry cycles, so a synthetic exception is used here.
+                var msgType = _handlers.Keys.FirstOrDefault(t => t.FullName == typeName);
+                if (msgType != null && _faultDispatchers.TryGetValue(msgType, out var faultDispatcher))
+                {
+                    var payloadField = entry.Values.FirstOrDefault(v => v.Name == "payload");
+                    if (!payloadField.Value.IsNull)
+                    {
+                        var synthEx = new InvalidOperationException(
+                            $"Dead-lettered after {retryCount} delivery attempts on stream '{streamKey}'.");
+                        try
+                        {
+                            await faultDispatcher(payloadField.Value.ToString() ?? string.Empty, synthEx, retryCount);
+                        }
+                        catch (Exception fex)
+                        {
+                            _logger.LogError(fex, "Fault consumer threw for dead-lettered entry {Id}", entry.Id);
+                        }
+                    }
+                }
+
                 _logger.LogWarning(
                     "Message {Id} dead-lettered on stream {Stream} after {Count} retries",
                     entry.Id, streamKey, retryCount);
@@ -237,10 +343,21 @@ public class RedisMessageBus : IMessageBus
                 return true;
             }
 
+            // Extract the stable message ID stored on publish; fall back to Guid.Empty for older entries.
+            var messageIdField = entry.Values.FirstOrDefault(v => v.Name == "messageid");
+            var messageId = !messageIdField.Value.IsNull
+                && Guid.TryParse(messageIdField.Value.ToString(), out var g) ? g : Guid.Empty;
+
+            // Derive sentTime from the stream entry ID millisecond timestamp (format: "{epochMs}-{seq}").
+            DateTimeOffset sentTime = DateTimeOffset.UtcNow;
+            var idParts = entry.Id.ToString().Split('-');
+            if (idParts.Length > 0 && long.TryParse(idParts[0], out var epochMs))
+                sentTime = DateTimeOffset.FromUnixTimeMilliseconds(epochMs);
+
             var message = LegacyJsonDeserializer.Deserialize((string)payloadField.Value!, type);
             if (message == null) return true;
 
-            await Task.WhenAll(handlers.Values.Select(h => h(message)));
+            await Task.WhenAll(handlers.Values.Select(h => h(message, messageId, sentTime)));
             return true;
         }
         catch (Exception ex)

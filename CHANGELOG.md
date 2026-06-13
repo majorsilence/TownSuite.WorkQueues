@@ -4,6 +4,72 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.4.0] — 2026-06-13
+
+### New features
+
+- **Scoped consumers** (`bus.Subscribe<TMessage, TConsumer>()`) — Resolves a fresh `IConsumer<TMessage>` instance from a new `IServiceScope` for each message dispatch. Ideal for consumers that depend on scoped services (e.g. EF Core `DbContext`). Requires `IServiceProvider` to be passed to the bus constructor; the DI extensions (`AddPostgresMessageBus`, `AddSqlServerMessageBus`, `AddRedisMessageBus`) now supply it automatically:
+  ```csharp
+  // Registration:
+  services.AddScoped<OrderConsumer>();
+  services.AddPostgresMessageBus((sp, bus) =>
+  {
+      bus.Subscribe<OrderSubmitted, OrderConsumer>();
+  });
+  ```
+
+- **`Fault<T>` dead-letter hook consumer** — When a message exhausts all retries and is dead-lettered, any registered `IConsumer<Fault<T>>` receives a `Fault<T>` notification in-process:
+  ```csharp
+  bus.SubscribeFault(new DeadLetterAlerter<OrderSubmitted>());
+  
+  class DeadLetterAlerter<T> : IConsumer<Fault<T>>
+  {
+      public Task Consume(ConsumeContext<Fault<T>> ctx)
+      {
+          Console.WriteLine($"Dead-lettered: {ctx.Message.ExceptionMessage}");
+          return Task.CompletedTask;
+      }
+  }
+  ```
+  `Fault<T>` carries: `OriginalMessage`, `ExceptionType`, `ExceptionMessage`, `StackTrace` (null for Redis), `FaultedAt`, `AttemptCount`.
+
+- **Scheduled / delayed delivery** — `IMessageBus` gains an overload `Publish<T>(T message, DateTimeOffset deliverAfter, CancellationToken ct = default)`. Messages are withheld from polling until the scheduled time via a new `scheduledfor` column. Supported by Postgres and SQL Server; throws `NotSupportedException` on Redis:
+  ```csharp
+  await bus.Publish(message, deliverAfter: DateTimeOffset.UtcNow.AddHours(2));
+  ```
+
+- **Retry delay / backoff** (`BatchOptions.RetryDelay`) — New `TimeSpan` property (default `TimeSpan.Zero`). When non-zero, a failed message's `scheduledfor` column is set to `NOW() + RetryDelay`, so it is withheld from the next polling cycle for the configured duration. Applies to Postgres and SQL Server; Redis transports use `ReclaimIdleTime` for the same effect:
+  ```csharp
+  options.RetryDelay = TimeSpan.FromSeconds(30);  // 30-second back-off between retries
+  ```
+
+- **`MessageId` + `SentTime` on `ConsumeContext<T>`** — New default interface members `Guid MessageId` and `DateTimeOffset SentTime`. All three buses populate these from the backing store. Use `MessageId` for idempotency checks:
+  ```csharp
+  public async Task Consume(ConsumeContext<OrderSubmitted> ctx)
+  {
+      if (await _idempotency.IsProcessed(ctx.MessageId)) return;
+      // ...
+  }
+  ```
+  Requires schema migrations: a `messageid` column (`UUID`/`UNIQUEIDENTIFIER`, default `gen_random_uuid()`/`NEWID()`) and a `scheduledfor` column (`TIMESTAMP`/`DATETIME`) are added to the `workqueue` table (idempotent `ADD COLUMN IF NOT EXISTS` / `IF NOT EXISTS` guards).
+
+### Schema migration notes
+
+`PostgresMigrationHostedService` and `SqlServerMigrationHostedService` apply all changes automatically on startup. For manually managed schemas, run the updated scripts in `scripts/`.
+
+| Change | Postgres | SQL Server |
+|---|---|---|
+| New `scheduledfor` column | `ADD COLUMN IF NOT EXISTS scheduledfor TIMESTAMP NULL` | `IF NOT EXISTS ... ADD [scheduledfor] DATETIME NULL` |
+| New `messageid` column | `ADD COLUMN IF NOT EXISTS messageid UUID NOT NULL DEFAULT gen_random_uuid()` | `IF NOT EXISTS ... ADD [messageid] UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() WITH VALUES` |
+
+Both changes are idempotent and non-destructive against existing data.
+
+### DI extension updates
+
+- `AddPostgresMessageBus`, `AddSqlServerMessageBus`, and `AddRedisMessageBus` now pass the root `IServiceProvider` to the bus constructor automatically, enabling `bus.Subscribe<TMessage, TConsumer>()` inside the configure callback without any additional wiring.
+
+---
+
 ## [2.3.0] — 2026-06-12
 
 ### Bug fixes

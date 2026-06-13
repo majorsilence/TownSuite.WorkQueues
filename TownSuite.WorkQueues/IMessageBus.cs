@@ -28,14 +28,36 @@ public interface IMessageBus : IAsyncDisposable
     Task Publish<T>(T message, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Serialises <paramref name="message"/> and schedules it for delivery no earlier than
+    /// <paramref name="deliverAfter"/>. The message will not be dispatched to consumers until
+    /// the current time exceeds <paramref name="deliverAfter"/>.
+    /// Not supported by the Redis transport — throws <see cref="NotSupportedException"/>.
+    /// </summary>
+    /// <typeparam name="T">The message type.</typeparam>
+    /// <param name="message">The message to publish.</param>
+    /// <param name="deliverAfter">Earliest time the message may be delivered.</param>
+    /// <param name="cancellationToken">Token to cancel the publish operation.</param>
+    Task Publish<T>(T message, DateTimeOffset deliverAfter, CancellationToken cancellationToken = default)
+        => Publish(message, cancellationToken);
+
+    /// <summary>
     /// Registers <paramref name="consumer"/> to receive messages of type <typeparamref name="T"/>.
     /// Multiple consumers may be subscribed to the same type; each receives every message.
     /// Subscribe before the bus starts delivering — call this immediately after construction
-    /// and before the first <see cref="Publish{T}"/>.
+    /// and before the first <see cref="Publish{T}(T,CancellationToken)"/>.
     /// </summary>
     /// <typeparam name="T">The message type to subscribe to.</typeparam>
     /// <param name="consumer">The consumer implementation.</param>
     void Subscribe<T>(IConsumer<T> consumer);
+
+    /// <summary>
+    /// Registers <paramref name="consumer"/> to receive <see cref="Fault{T}"/> notifications
+    /// when messages of type <typeparamref name="T"/> are dead-lettered after exhausting retries.
+    /// The default no-op implementation is a no-op; override in transports that support fault routing.
+    /// </summary>
+    /// <typeparam name="T">The original message type whose dead-lettering should be observed.</typeparam>
+    /// <param name="consumer">The fault consumer implementation.</param>
+    void SubscribeFault<T>(IConsumer<Fault<T>> consumer) { }
 
     /// <summary>
     /// Resets all dead-lettered messages of type <typeparamref name="T"/> so they will be

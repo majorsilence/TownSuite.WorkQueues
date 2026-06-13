@@ -17,11 +17,22 @@ public class SimpleConsumeContext<T> : ConsumeContext<T>
     /// <inheritdoc/>
     public CancellationToken CancellationToken { get; }
 
+    /// <inheritdoc/>
+    public Guid MessageId { get; }
+
+    /// <inheritdoc/>
+    public DateTimeOffset SentTime { get; }
+
     /// <param name="message">The message payload to expose via <see cref="Message"/>.</param>
     /// <param name="cancellationToken">Bus shutdown token forwarded to the consumer.</param>
-    public SimpleConsumeContext(T message, CancellationToken cancellationToken = default)
+    /// <param name="messageId">Unique message identifier from the backing store.</param>
+    /// <param name="sentTime">UTC timestamp when the message was published.</param>
+    public SimpleConsumeContext(T message, CancellationToken cancellationToken = default,
+        Guid messageId = default, DateTimeOffset sentTime = default)
     {
         Message = message;
         CancellationToken = cancellationToken;
+        MessageId = messageId;
+        SentTime = sentTime;
     }
 }

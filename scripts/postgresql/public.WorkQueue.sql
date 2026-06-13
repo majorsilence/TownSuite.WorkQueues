@@ -1,16 +1,20 @@
 CREATE TABLE IF NOT EXISTS public.workqueue (
     id SERIAL PRIMARY KEY,
+    messageid UUID NOT NULL DEFAULT gen_random_uuid(),
     timecreatedutc TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     channel VARCHAR(500) NOT NULL,
     payload TEXT NOT NULL,
     timeprocessedutc TIMESTAMP NULL,
     failedat TIMESTAMP NULL,
-    retrycount INT NOT NULL DEFAULT 0
+    retrycount INT NOT NULL DEFAULT 0,
+    scheduledfor TIMESTAMP NULL
 );
 
 -- Safe upgrade from prior schema versions
 ALTER TABLE public.workqueue ADD COLUMN IF NOT EXISTS failedat TIMESTAMP NULL;
 ALTER TABLE public.workqueue ADD COLUMN IF NOT EXISTS retrycount INT NOT NULL DEFAULT 0;
+ALTER TABLE public.workqueue ADD COLUMN IF NOT EXISTS scheduledfor TIMESTAMP NULL;
+ALTER TABLE public.workqueue ADD COLUMN IF NOT EXISTS messageid UUID NOT NULL DEFAULT gen_random_uuid();
 
 DO $$
 BEGIN

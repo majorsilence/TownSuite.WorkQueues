@@ -30,5 +30,14 @@
         /// Maximum number of delivery attempts before a message is moved to the dead-letter state.
         /// </summary>
         public int MaxRetries { get; set; } = 3;
+
+        /// <summary>
+        /// Minimum delay between retry attempts. Defaults to <see cref="TimeSpan.Zero"/> (retry
+        /// immediately on the next polling cycle). For SQL-backed transports a non-zero value sets
+        /// the <c>scheduledfor</c> column to <c>NOW() + RetryDelay</c> so the message is withheld
+        /// from polling until the delay elapses.
+        /// Redis transports use <c>RedisOptions.ReclaimIdleTime</c> to control retry timing instead.
+        /// </summary>
+        public TimeSpan RetryDelay { get; set; } = TimeSpan.Zero;
     }
 }

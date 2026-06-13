@@ -41,7 +41,7 @@ public static class RedisServiceExtensions
         {
             var redis  = sp.GetRequiredService<IConnectionMultiplexer>();
             var logger = sp.GetRequiredService<ILogger<RedisMessageBus>>();
-            var bus    = new RedisMessageBus(redis, opts, logger);
+            var bus    = new RedisMessageBus(redis, opts, logger, sp);
             subscribe?.Invoke(sp, bus);
             return bus;
         });

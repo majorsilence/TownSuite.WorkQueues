@@ -2,13 +2,15 @@
 IF OBJECT_ID(N'[dbo].[workqueue]', N'U') IS NULL
 BEGIN
     CREATE TABLE [dbo].[workqueue] (
-        [id]               INT           IDENTITY(1,1) NOT NULL,
-        [timecreatedutc]   DATETIME      NOT NULL CONSTRAINT [DF_workqueue_timecreatedutc] DEFAULT (GETUTCDATE()),
-        [channel]          NVARCHAR(500) NOT NULL,
-        [payload]          NVARCHAR(MAX) NOT NULL,
-        [timeprocessedutc] DATETIME      NULL,
-        [failedat]         DATETIME      NULL,
-        [retrycount]       INT           NOT NULL CONSTRAINT [DF_workqueue_retrycount] DEFAULT (0),
+        [id]               INT              IDENTITY(1,1) NOT NULL,
+        [messageid]        UNIQUEIDENTIFIER NOT NULL CONSTRAINT [DF_workqueue_messageid] DEFAULT (NEWID()),
+        [timecreatedutc]   DATETIME         NOT NULL CONSTRAINT [DF_workqueue_timecreatedutc] DEFAULT (GETUTCDATE()),
+        [channel]          NVARCHAR(500)    NOT NULL,
+        [payload]          NVARCHAR(MAX)    NOT NULL,
+        [timeprocessedutc] DATETIME         NULL,
+        [failedat]         DATETIME         NULL,
+        [retrycount]       INT              NOT NULL CONSTRAINT [DF_workqueue_retrycount] DEFAULT (0),
+        [scheduledfor]     DATETIME         NULL,
         CONSTRAINT [PK_workqueue] PRIMARY KEY CLUSTERED ([id] ASC)
     )
 END
@@ -30,6 +32,26 @@ IF NOT EXISTS (
 BEGIN
     ALTER TABLE [dbo].[workqueue]
         ADD [retrycount] INT NOT NULL CONSTRAINT [DF_workqueue_retrycount_add] DEFAULT (0)
+END
+GO
+-- Add scheduledfor column if upgrading from a schema that pre-dates it.
+IF NOT EXISTS (
+    SELECT 1 FROM sys.columns
+    WHERE object_id = OBJECT_ID(N'[dbo].[workqueue]') AND name = N'scheduledfor'
+)
+BEGIN
+    ALTER TABLE [dbo].[workqueue] ADD [scheduledfor] DATETIME NULL
+END
+GO
+-- Add messageid column if upgrading from a schema that pre-dates it.
+IF NOT EXISTS (
+    SELECT 1 FROM sys.columns
+    WHERE object_id = OBJECT_ID(N'[dbo].[workqueue]') AND name = N'messageid'
+)
+BEGIN
+    ALTER TABLE [dbo].[workqueue]
+        ADD [messageid] UNIQUEIDENTIFIER NOT NULL
+            CONSTRAINT [DF_workqueue_messageid_add] DEFAULT (NEWID()) WITH VALUES
 END
 GO
 -- Widen channel column if upgrading from nvarchar(50).

@@ -32,7 +32,7 @@ public static class SqlServerServiceExtensions
         {
             var options = sp.GetRequiredService<SqlServerTransportOptions>();
             var logger  = sp.GetRequiredService<ILogger<SqlServerMessageBus>>();
-            var bus     = new SqlServerMessageBus(options, logger);
+            var bus     = new SqlServerMessageBus(options, logger, sp);
             configure(sp, bus);
             return bus;
         });

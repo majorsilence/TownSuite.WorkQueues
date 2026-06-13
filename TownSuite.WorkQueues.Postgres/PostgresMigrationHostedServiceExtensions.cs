@@ -30,7 +30,7 @@ public static class PostgresMigrationHostedServiceExtensions
         {
             var options = sp.GetRequiredService<SqlTransportOptions>();
             var logger  = sp.GetRequiredService<ILogger<PostgresMessageBus>>();
-            var bus     = new PostgresMessageBus(options, logger);
+            var bus     = new PostgresMessageBus(options, logger, sp);
             configure(sp, bus);
             return bus;
         });
