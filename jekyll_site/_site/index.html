@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TownSuite.WorkQueues — a work queue in the database you already run</title>
+<meta name="description" content="A lightweight message bus and work queue for .NET, backed by SQL Server, PostgreSQL, or Redis. No broker to deploy — your queue lives where your data already does.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;650;700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/TownSuite.WorkQueues/assets/css/main.css">
+<!-- Begin Jekyll SEO tag v2.9.0 -->
+<title>TownSuite.WorkQueues | A lightweight message bus and work queue for .NET, backed by SQL Server, PostgreSQL, or Redis.</title>
+<meta name="generator" content="Jekyll v4.4.1" />
+<meta property="og:title" content="TownSuite.WorkQueues" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="A lightweight message bus and work queue for .NET, backed by SQL Server, PostgreSQL, or Redis. No broker to deploy — your queue lives where your data already does." />
+<meta name="twitter:description" property="og:description" content="A lightweight message bus and work queue for .NET, backed by SQL Server, PostgreSQL, or Redis. No broker to deploy — your queue lives where your data already does." />
+<link rel="canonical" href="http://localhost:4000/TownSuite.WorkQueues/" />
+<meta property="og:url" content="http://localhost:4000/TownSuite.WorkQueues/" />
+<meta property="og:site_name" content="TownSuite.WorkQueues" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="TownSuite.WorkQueues" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebSite","description":"A lightweight message bus and work queue for .NET, backed by SQL Server, PostgreSQL, or Redis. No broker to deploy — your queue lives where your data already does.","headline":"TownSuite.WorkQueues","name":"TownSuite.WorkQueues","url":"http://localhost:4000/TownSuite.WorkQueues/"}</script>
+<!-- End Jekyll SEO tag -->
+
+</head>
+<body data-anim="on">
+<!-- ============ NAV ============ -->
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="wordmark" href="/TownSuite.WorkQueues/">
+      <span class="wordmark-box"></span>
+      <span>TownSuite<span class="dim">.</span>WorkQueues</span>
+    </a>
+    <nav class="nav-links">
+      <a href="#why">Why</a>
+      <a href="#api">API</a>
+      <a href="#reliability">Reliability</a>
+      <a href="#backends">Backends</a>
+      <a href="#benchmarks">Benchmarks</a>
+      <a class="nav-gh" href="https://github.com/TownSuite/TownSuite.WorkQueues" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ============ HERO ============ -->
+<main>
+<div class="hero wrap">
+  <p class="eyebrow">OPEN SOURCE · MIT · .NET</p>
+  <h1>The work queue that <em>knows its limits.</em></h1>
+  <p class="hero-sub">TownSuite.WorkQueues is a lightweight message bus and work queue for .NET, backed by <strong>SQL Server</strong>, <strong>PostgreSQL</strong>, or <strong>Redis</strong>. No broker to deploy, no new infrastructure to babysit — your queue lives where your data already does.</p>
+  <div class="hero-actions">
+    <div class="install" id="install-cmd" title="Click to copy">
+      <span class="prompt">$</span>
+      <span>dotnet add package TownSuite.WorkQueue</span>
+    </div>
+    <a class="btn-secondary" href="https://github.com/TownSuite/TownSuite.WorkQueues" target="_blank" rel="noopener">View source ↗</a>
+  </div>
+  <div class="hero-meta">
+    <span>MIT licensed</span>
+    <span>Transactional dequeue</span>
+    <span>Benchmarks published</span>
+    <span>Zero brokers</span>
+  </div>
+
+  <div class="diagram" aria-label="Diagram: producers enqueue into a WorkQueue table, a consumer dequeues">
+    <div class="producers">
+      <p class="diagram-label">PRODUCERS</p>
+      <div class="msg-stack">
+        <div class="msg">Enqueue(req)</div>
+        <div class="msg">Enqueue(req)</div>
+        <div class="msg">Enqueue(req)</div>
+      </div>
+    </div>
+    <div class="flow-arrow">──▶</div>
+    <div class="queue-table">
+      <p class="diagram-label">TABLE · WorkQueue</p>
+      <div class="dbtable">
+        <div class="dbtable-head"><div>id</div><div>channel</div><div>payload</div></div>
+        <div class="dbrow"><div>482</div><div class="chan">invoice-export</div><div>{"id":9114,…}</div></div>
+        <div class="dbrow"><div>483</div><div class="chan">invoice-export</div><div>{"id":9115,…}</div></div>
+        <div class="dbrow"><div>484</div><div class="chan">permit-notify</div><div>{"id":2210,…}</div></div>
+        <div class="dbrow"><div>485</div><div class="chan">invoice-export</div><div>{"id":9116,…}</div></div>
+      </div>
+    </div>
+    <div class="flow-arrow">──▶</div>
+    <div class="consumer">
+      <p class="diagram-label">CONSUMER</p>
+      <div class="msg-stack">
+        <div class="msg">Dequeue&lt;T&gt;()</div>
+        <div class="msg">txn.Commit()</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ WHY ============ -->
+<section id="why">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">01</span><h2>Why it exists</h2></div>
+    <div class="sec-body">
+      <p class="sec-lede">Most systems don't need Kafka. They need <em>a table and a transaction.</em></p>
+      <div class="why-grid">
+        <div class="why-cell">
+          <span class="why-glyph">0 brokers</span>
+          <h3>No new infrastructure</h3>
+          <p>The queue is a table in the database you already run, back up, and monitor. Nothing extra to deploy, patch, or page anyone about at 3 a.m.</p>
+        </div>
+        <div class="why-cell">
+          <span class="why-glyph">BEGIN…COMMIT</span>
+          <h3>Transactional by design</h3>
+          <p>Dequeue happens inside your own DbTransaction. A message leaves the queue only when your work commits — process and acknowledge atomically.</p>
+        </div>
+        <div class="why-cell">
+          <span class="why-glyph">≤ 10k calls/s</span>
+          <h3>Honest about scale</h3>
+          <p>Built for low-load systems and says so up front. Benchmarks are published, limits are documented, and the README tells you when to use something else.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ API ============ -->
+<section id="api">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">02</span><h2>The API</h2></div>
+    <div class="sec-body">
+      <p class="sec-lede">Publish and subscribe. <em>A consumer per message type.</em></p>
+      <div class="code-cols">
+        <div class="code-card">
+          <div class="code-card-head"><span>OrderConsumer.cs</span><span class="accent">consumer</span></div>
+          <pre><code><span class="k">public class</span> <span class="t">OrderConsumer</span>
+    : <span class="t">IConsumer</span>&lt;<span class="t">OrderSubmitted</span>&gt;
+{
+    <span class="k">public async</span> <span class="t">Task</span> <span class="m">Consume</span>(
+        <span class="t">ConsumeContext</span>&lt;<span class="t">OrderSubmitted</span>&gt; ctx)
+    {
+        <span class="c">// ctx.Message    — your typed payload</span>
+        <span class="c">// ctx.MessageId  — stable UUID per message</span>
+        <span class="c">// ctx.SentTime   — when Publish() was called</span>
+        <span class="k">await</span> <span class="m">Process</span>(ctx.Message);
+        <span class="c">// throw to retry; no action = acknowledged</span>
+    }
+}</code></pre>
+        </div>
+        <div class="code-card">
+          <div class="code-card-head"><span>Program.cs</span><span class="accent">wire-up &amp; publish</span></div>
+          <pre><code><span class="k">var</span> bus = <span class="k">new</span> <span class="t">PostgresMessageBus</span>(options, logger);
+
+<span class="c">// singleton consumer instance</span>
+bus.<span class="m">Subscribe</span>(<span class="k">new</span> <span class="t">OrderConsumer</span>());
+
+<span class="c">// or DI-scoped — resolved per message</span>
+bus.<span class="m">Subscribe</span>&lt;<span class="t">OrderSubmitted</span>, <span class="t">OrderConsumer</span>&gt;();
+
+<span class="c">// publish — channel derived from type name</span>
+<span class="k">await</span> bus.<span class="m">Publish</span>(<span class="k">new</span> <span class="t">OrderSubmitted</span>
+{
+    OrderId  = <span class="t">Guid</span>.<span class="m">NewGuid</span>(),
+    Customer = <span class="s">"alice@example.com"</span>
+});</code></pre>
+        </div>
+      </div>
+      <p class="code-note">Multiple consumers can subscribe to the same message type — each gets a copy. For direct database access without the polling loop, use <code>IWorkQueue.Enqueue</code> / <code>Dequeue</code> inside your own <code>DbTransaction</code>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ RELIABILITY ============ -->
+<section id="reliability">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">03</span><h2>Reliability</h2></div>
+    <div class="sec-body">
+      <p class="sec-lede">Durable delivery, <em>without a sidecar.</em></p>
+      <div class="why-grid">
+        <div class="why-cell">
+          <span class="why-glyph">MaxRetries = 3</span>
+          <h3>Automatic retries</h3>
+          <p>A consumer that throws is retried up to <code>MaxRetries</code> times. Configure <code>RetryDelay</code> to back off between attempts. After the final attempt the row is dead-lettered — polling skips it permanently.</p>
+        </div>
+        <div class="why-cell">
+          <span class="why-glyph">ReplayDeadLettered&lt;T&gt;</span>
+          <h3>Dead-letter &amp; replay</h3>
+          <p>Dead-lettered rows stay in the table for inspection. Call <code>ReplayDeadLettered&lt;T&gt;()</code> or run a single <code>UPDATE</code> to reset them for redelivery. No separate topic or stream to manage.</p>
+        </div>
+        <div class="why-cell">
+          <span class="why-glyph">IConsumer&lt;Fault&lt;T&gt;&gt;</span>
+          <h3>Failure notifications</h3>
+          <p>Subscribe a fault consumer and it fires whenever a message is dead-lettered, carrying the original payload, exception type, stack trace, attempt count, and timestamp.</p>
+        </div>
+      </div>
+      <div class="code-cols" style="margin-top: 40px;">
+        <div class="code-card">
+          <div class="code-card-head"><span>Program.cs</span><span class="accent">scheduled delivery</span></div>
+          <pre><code><span class="c">// deliver no earlier than 5 minutes from now</span>
+<span class="k">await</span> bus.<span class="m">Publish</span>(
+    <span class="k">new</span> <span class="t">ReminderEmail</span> { UserId = userId },
+    deliverAfter: <span class="t">TimeSpan</span>.<span class="m">FromMinutes</span>(5));
+
+<span class="c">// back off 30 s between retry attempts</span>
+options.RetryDelay = <span class="t">TimeSpan</span>.<span class="m">FromSeconds</span>(30);
+
+<span class="c">// replay all dead-lettered messages of this type</span>
+<span class="k">int</span> replayed = <span class="k">await</span> bus
+    .<span class="m">ReplayDeadLettered</span>&lt;<span class="t">OrderSubmitted</span>&gt;();</code></pre>
+        </div>
+        <div class="code-card">
+          <div class="code-card-head"><span>AlertConsumer.cs</span><span class="accent">fault hook</span></div>
+          <pre><code>bus.<span class="m">SubscribeFault</span>&lt;<span class="t">OrderSubmitted</span>&gt;(
+    <span class="k">new</span> <span class="t">OrderAlertConsumer</span>());
+
+<span class="k">class</span> <span class="t">OrderAlertConsumer</span>
+    : <span class="t">IConsumer</span>&lt;<span class="t">Fault</span>&lt;<span class="t">OrderSubmitted</span>&gt;&gt;
+{
+    <span class="k">public</span> <span class="t">Task</span> <span class="m">Consume</span>(
+        <span class="t">ConsumeContext</span>&lt;<span class="t">Fault</span>&lt;<span class="t">OrderSubmitted</span>&gt;&gt; ctx)
+    {
+        <span class="k">var</span> f = ctx.Message;
+        <span class="c">// f.OriginalMessage  f.ExceptionType</span>
+        <span class="c">// f.AttemptCount     f.FaultedAt</span>
+        <span class="k">return</span> <span class="m">Notify</span>(f);
+    }
+}</code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ BACKENDS ============ -->
+<section id="backends">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">04</span><h2>Backends</h2></div>
+    <div class="sec-body">
+      <p class="sec-lede">Bring <em>whichever store</em> you already trust.</p>
+      <div class="backend-rows">
+        <div class="backend-row">
+          <div class="backend-name"><span class="tick">[x]</span>SQL Server</div>
+          <p>One table and two stored procedures. Run the setup scripts and the queue lives in <code>dbo</code> alongside your data.</p>
+          <div class="backend-scripts">dbo.WorkQueue.sql<br>dbo.WorkQueue_Enqueue.sql<br>dbo.WorkQueue_Dequeue.sql</div>
+        </div>
+        <div class="backend-row">
+          <div class="backend-name"><span class="tick">[x]</span>PostgreSQL</div>
+          <p>Same shape, same API. The fastest backend in published benchmarks — burstable to roughly 19,000 calls per second.</p>
+          <div class="backend-scripts">public.WorkQueue.sql<br>public.WorkQueue_Enqueue.sql<br>public.WorkQueue_Dequeue.sql</div>
+        </div>
+        <div class="backend-row">
+          <div class="backend-name"><span class="tick">[x]</span>Redis</div>
+          <p>For when the queue can be in memory and the database round-trip is overhead you don't want. No setup scripts required.</p>
+          <div class="backend-scripts">no scripts — point it at<br>your Redis connection</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ BENCHMARKS ============ -->
+<section id="benchmarks">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">05</span><h2>Benchmarks</h2></div>
+    <div class="sec-body">
+      <p class="sec-lede">Real numbers, <em>published in the README.</em></p>
+      <div class="bench-cols">
+        <div class="bench-card">
+          <div class="bench-card-head">
+            <h3>PostgreSQL</h3>
+            <span class="mean">enqueue mean 519.1 μs</span>
+          </div>
+          <table class="bench">
+            <thead><tr><th>THREADS</th><th class="num">CALLS / 1s</th><th class="num">CALLS / 30s</th><th class="bar-cell"></th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td class="num">1,953</td><td class="num">58,590</td><td class="bar-cell"><div class="bar" style="width: 10%;"></div></td></tr>
+              <tr><td>10</td><td class="num">11,509</td><td class="num">345,278</td><td class="bar-cell"><div class="bar" style="width: 60%;"></div></td></tr>
+              <tr><td>20</td><td class="num">16,661</td><td class="num">499,844</td><td class="bar-cell"><div class="bar" style="width: 87%;"></div></td></tr>
+              <tr><td>30</td><td class="num">18,062</td><td class="num">541,895</td><td class="bar-cell"><div class="bar" style="width: 95%;"></div></td></tr>
+              <tr><td>40</td><td class="num">18,366</td><td class="num">551,004</td><td class="bar-cell"><div class="bar" style="width: 96%;"></div></td></tr>
+              <tr><td>50</td><td class="num">19,090</td><td class="num">572,727</td><td class="bar-cell"><div class="bar" style="width: 100%;"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="bench-card">
+          <div class="bench-card-head">
+            <h3>SQL Server</h3>
+            <span class="mean">enqueue mean 794.8 μs</span>
+          </div>
+          <table class="bench">
+            <thead><tr><th>THREADS</th><th class="num">CALLS / 1s</th><th class="num">CALLS / 30s</th><th class="bar-cell"></th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td class="num">1,241</td><td class="num">37,228</td><td class="bar-cell"><div class="bar" style="width: 7%;"></div></td></tr>
+              <tr><td>10</td><td class="num">12,606</td><td class="num">378,272</td><td class="bar-cell"><div class="bar" style="width: 66%;"></div></td></tr>
+              <tr><td>20</td><td class="num">12,943</td><td class="num">388,693</td><td class="bar-cell"><div class="bar" style="width: 68%;"></div></td></tr>
+              <tr><td>30</td><td class="num">13,135</td><td class="num">394,284</td><td class="bar-cell"><div class="bar" style="width: 69%;"></div></td></tr>
+              <tr><td>40</td><td class="num">13,210</td><td class="num">396,515</td><td class="bar-cell"><div class="bar" style="width: 69%;"></div></td></tr>
+              <tr><td>50</td><td class="num">12,944</td><td class="num">388,545</td><td class="bar-cell"><div class="bar" style="width: 68%;"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p class="bench-foot">BenchmarkDotNet v0.13.5 · Apple M1 Max · .NET 6.0 · client → sql over network · bars scaled to 19,090 calls/s peak</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ LIMITS ============ -->
+<section id="limits">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">06</span><h2>Know its limits</h2></div>
+    <div class="sec-body">
+      <p class="sec-lede">Use it when it fits. <em>Skip it when it doesn't.</em></p>
+      <div class="limits">
+        <div class="limits-col">
+          <h3 class="good">A good fit</h3>
+          <ul class="yes">
+            <li>Background jobs in line-of-business apps — exports, reports, notifications</li>
+            <li>Sustained throughput under ~10,000 calls per second</li>
+            <li>Work that must commit atomically with your data</li>
+            <li>Teams who'd rather not run a message broker</li>
+          </ul>
+        </div>
+        <div class="limits-col">
+          <h3>Reach for Kafka or RabbitMQ instead</h3>
+          <ul class="no">
+            <li>Sustained high-load or firehose event streams</li>
+            <li>Fan-out pub/sub to many independent subscribers</li>
+            <li>Push delivery — consumers here poll the table</li>
+            <li>Cross-system streaming pipelines and replay</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- ============ FOOTER ============ -->
+<footer>
+  <div class="wrap footer-inner">
+    <span>© TownSuite · MIT License</span>
+    <nav class="footer-links">
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/blob/main/Readme.md" target="_blank" rel="noopener">README</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/issues" target="_blank" rel="noopener">Issues</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('install-cmd').addEventListener('click', function () {
+    var range = document.createRange();
+    range.selectNodeContents(this.children[1]);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    navigator.clipboard && navigator.clipboard.writeText('dotnet add package TownSuite.WorkQueue');
+  });
+</script>
+
+</body>
+</html>
