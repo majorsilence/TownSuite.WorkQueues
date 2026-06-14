@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PostgreSQL Backend — TownSuite.WorkQueues — a work queue in the database you already run</title>
+<meta name="description" content="Set up the PostgreSQL-backed message bus with FOR UPDATE SKIP LOCKED concurrency.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;650;700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/TownSuite.WorkQueues/assets/css/main.css">
+<!-- Begin Jekyll SEO tag v2.9.0 -->
+<title>PostgreSQL Backend — TownSuite.WorkQueues | TownSuite.WorkQueues</title>
+<meta name="generator" content="Jekyll v4.4.1" />
+<meta property="og:title" content="PostgreSQL Backend — TownSuite.WorkQueues" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Set up the PostgreSQL-backed message bus with FOR UPDATE SKIP LOCKED concurrency." />
+<meta name="twitter:description" property="og:description" content="Set up the PostgreSQL-backed message bus with FOR UPDATE SKIP LOCKED concurrency." />
+<link rel="canonical" href="http://localhost:4000/TownSuite.WorkQueues/docs/backends/postgres/" />
+<meta property="og:url" content="http://localhost:4000/TownSuite.WorkQueues/docs/backends/postgres/" />
+<meta property="og:site_name" content="TownSuite.WorkQueues" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="PostgreSQL Backend — TownSuite.WorkQueues" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebPage","description":"Set up the PostgreSQL-backed message bus with FOR UPDATE SKIP LOCKED concurrency.","headline":"PostgreSQL Backend — TownSuite.WorkQueues","url":"http://localhost:4000/TownSuite.WorkQueues/docs/backends/postgres/"}</script>
+<!-- End Jekyll SEO tag -->
+
+</head>
+<body data-anim="on">
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="wordmark" href="/TownSuite.WorkQueues/">
+      <span class="wordmark-box"></span>
+      <span>TownSuite<span class="dim">.</span>WorkQueues</span>
+    </a>
+    <nav class="nav-links">
+      <a href="/TownSuite.WorkQueues/#why">Why</a>
+      <a href="/TownSuite.WorkQueues/#api">API</a>
+      <a href="/TownSuite.WorkQueues/#reliability">Reliability</a>
+      <a href="/TownSuite.WorkQueues/#backends">Backends</a>
+      <a href="/TownSuite.WorkQueues/#benchmarks">Benchmarks</a>
+      <a href="/TownSuite.WorkQueues/docs/">Docs</a>
+      <a class="nav-gh" href="https://github.com/TownSuite/TownSuite.WorkQueues" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<div class="docs-shell">
+  <div class="wrap docs-wrap">
+    <aside class="docs-sidebar">
+      <nav class="docs-nav">
+        <a class="docs-home-link" href="/TownSuite.WorkQueues/docs/">Getting Started</a>
+        <div class="docs-nav-group">
+          <p class="docs-nav-label">Backends</p>
+          <a href="/TownSuite.WorkQueues/docs/backends/postgres/" class="active">PostgreSQL</a>
+          <a href="/TownSuite.WorkQueues/docs/backends/sqlserver/">SQL Server</a>
+          <a href="/TownSuite.WorkQueues/docs/backends/redis/">Redis</a>
+          <a href="/TownSuite.WorkQueues/docs/backends/sqlite/">SQLite <span class="docs-badge">local dev</span></a>
+        </div>
+        <div class="docs-nav-group">
+          <p class="docs-nav-label">Reference</p>
+          <a href="/TownSuite.WorkQueues/docs/configuration/">Configuration</a>
+          <a href="/TownSuite.WorkQueues/docs/migrating/">Migrating from v1</a>
+        </div>
+      </nav>
+    </aside>
+    <main class="docs-content">
+      <h1 id="postgresql-backend">PostgreSQL Backend</h1>
+
+<p>The PostgreSQL backend uses <code class="language-plaintext highlighter-rouge">FOR UPDATE SKIP LOCKED</code> so that multiple consumer processes claim disjoint rows without blocking each other. It is the fastest backend in published benchmarks, reaching roughly 19,000 calls per second at 50 threads.</p>
+
+<h2 id="install">Install</h2>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dotnet add package TownSuite.WorkQueues.Postgres
+</code></pre></div></div>
+
+<h2 id="schema-migration">Schema migration</h2>
+
+<p>The migration hosted service creates the <code class="language-plaintext highlighter-rouge">workqueue</code> table, index, and stored procedures on startup. It is idempotent and safe to run against an existing database.</p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">builder</span><span class="p">.</span><span class="n">Services</span><span class="p">.</span><span class="nf">AddSingleton</span><span class="p">(</span><span class="k">new</span> <span class="n">SqlTransportOptions</span>
+<span class="p">{</span>
+    <span class="n">ConnectionString</span> <span class="p">=</span> <span class="s">"Host=localhost;Database=myapp;Username=app;Password=secret"</span><span class="p">,</span>
+    <span class="n">Schema</span> <span class="p">=</span> <span class="s">"transport"</span>
+<span class="p">});</span>
+<span class="n">builder</span><span class="p">.</span><span class="n">Services</span><span class="p">.</span><span class="nf">AddPostgresMigrationHostedService</span><span class="p">();</span>
+</code></pre></div></div>
+
+<p>Alternatively, run the bundled scripts manually from <code class="language-plaintext highlighter-rouge">scripts/postgres/</code> in the repository.</p>
+
+<h2 id="register-the-bus">Register the bus</h2>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">builder</span><span class="p">.</span><span class="n">Services</span><span class="p">.</span><span class="nf">AddPostgresMessageBus</span><span class="p">((</span><span class="n">sp</span><span class="p">,</span> <span class="n">bus</span><span class="p">)</span> <span class="p">=&gt;</span>
+<span class="p">{</span>
+    <span class="c1">// singleton consumer instance</span>
+    <span class="n">bus</span><span class="p">.</span><span class="nf">Subscribe</span><span class="p">(</span><span class="k">new</span> <span class="nf">OrderConsumer</span><span class="p">());</span>
+
+    <span class="c1">// or DI-scoped — resolved from a fresh scope per message</span>
+    <span class="n">bus</span><span class="p">.</span><span class="n">Subscribe</span><span class="p">&lt;</span><span class="n">OrderSubmitted</span><span class="p">,</span> <span class="n">OrderConsumer</span><span class="p">&gt;();</span>
+<span class="p">});</span>
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">AddPostgresMessageBus</code> registers <code class="language-plaintext highlighter-rouge">PostgresMessageBus</code> as the <code class="language-plaintext highlighter-rouge">IMessageBus</code> singleton. The factory delegate runs once at construction time; register all subscriptions here before the bus starts polling.</p>
+
+<h2 id="options-reference">Options reference</h2>
+
+<p>See <a href="/TownSuite.WorkQueues/docs/configuration/#postgresql--sqltransportoptions"><code class="language-plaintext highlighter-rouge">SqlTransportOptions</code></a> for the full property table. Common values:</p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">new</span> <span class="n">SqlTransportOptions</span>
+<span class="p">{</span>
+    <span class="n">ConnectionString</span> <span class="p">=</span> <span class="s">"..."</span><span class="p">,</span>
+    <span class="n">Schema</span> <span class="p">=</span> <span class="s">"transport"</span><span class="p">,</span>        <span class="c1">// default — change to match your schema</span>
+    <span class="n">MaxBatchSize</span> <span class="p">=</span> <span class="m">50</span><span class="p">,</span>           <span class="c1">// messages per poll cycle</span>
+    <span class="n">MaxWaitTime</span> <span class="p">=</span> <span class="n">TimeSpan</span><span class="p">.</span><span class="nf">FromSeconds</span><span class="p">(</span><span class="m">2</span><span class="p">),</span>
+    <span class="n">MaxRetries</span> <span class="p">=</span> <span class="m">5</span><span class="p">,</span>
+    <span class="n">RetryDelay</span> <span class="p">=</span> <span class="n">TimeSpan</span><span class="p">.</span><span class="nf">FromSeconds</span><span class="p">(</span><span class="m">30</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h2 id="how-claiming-works">How claiming works</h2>
+
+<p>Each poll cycle opens a transaction and runs:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">SELECT</span> <span class="n">id</span><span class="p">,</span> <span class="n">channel</span><span class="p">,</span> <span class="n">payload</span><span class="p">,</span> <span class="n">retrycount</span><span class="p">,</span> <span class="n">messageid</span><span class="p">,</span> <span class="n">timecreatedutc</span>
+<span class="k">FROM</span> <span class="n">transport</span><span class="p">.</span><span class="n">workqueue</span>
+<span class="k">WHERE</span> <span class="n">timeprocessedutc</span> <span class="k">IS</span> <span class="k">NULL</span>
+  <span class="k">AND</span> <span class="n">failedat</span> <span class="k">IS</span> <span class="k">NULL</span>
+  <span class="k">AND</span> <span class="p">(</span><span class="n">scheduledfor</span> <span class="k">IS</span> <span class="k">NULL</span> <span class="k">OR</span> <span class="n">scheduledfor</span> <span class="o">&lt;=</span> <span class="k">CURRENT_TIMESTAMP</span><span class="p">)</span>
+  <span class="k">AND</span> <span class="n">channel</span> <span class="o">=</span> <span class="k">ANY</span><span class="p">(</span><span class="o">@</span><span class="n">channels</span><span class="p">)</span>
+<span class="k">ORDER</span> <span class="k">BY</span> <span class="n">timecreatedutc</span>
+<span class="k">FOR</span> <span class="k">UPDATE</span> <span class="n">SKIP</span> <span class="n">LOCKED</span>
+<span class="k">LIMIT</span> <span class="o">@</span><span class="n">maxMessages</span>
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">FOR UPDATE SKIP LOCKED</code> ensures that two processes polling simultaneously claim disjoint rows. The lock is held until the transaction commits at the end of the batch. If the process crashes mid-batch, the transaction rolls back and all claimed rows are immediately available to other consumers — no lock timeout needed.</p>
+
+    </main>
+  </div>
+</div>
+<footer>
+  <div class="wrap footer-inner">
+    <span>© TownSuite · MIT License</span>
+    <nav class="footer-links">
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/blob/main/Readme.md" target="_blank" rel="noopener">README</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/issues" target="_blank" rel="noopener">Issues</a>
+    </nav>
+  </div>
+</footer>
+
+
+</body>
+</html>

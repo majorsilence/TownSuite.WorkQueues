@@ -1,33 +1,18 @@
 ---
 layout: default
 title: TownSuite.WorkQueues
-description: A lightweight message bus and work queue for .NET, backed by SQL Server, PostgreSQL, or Redis. No broker to deploy — your queue lives where your data already does.
+description: A lightweight message bus and work queue for .NET, backed by SQL Server, PostgreSQL, Redis, or SQLite. No broker to deploy — your queue lives where your data already does.
 ---
 
 <!-- ============ NAV ============ -->
-<header class="nav">
-  <div class="wrap nav-inner">
-    <a class="wordmark" href="{{ '/' | relative_url }}">
-      <span class="wordmark-box"></span>
-      <span>TownSuite<span class="dim">.</span>WorkQueues</span>
-    </a>
-    <nav class="nav-links">
-      <a href="#why">Why</a>
-      <a href="#api">API</a>
-      <a href="#reliability">Reliability</a>
-      <a href="#backends">Backends</a>
-      <a href="#benchmarks">Benchmarks</a>
-      <a class="nav-gh" href="{{ site.github_repo }}" target="_blank" rel="noopener">GitHub ↗</a>
-    </nav>
-  </div>
-</header>
+{% include nav.html %}
 
 <!-- ============ HERO ============ -->
 <main>
 <div class="hero wrap">
   <p class="eyebrow">OPEN SOURCE · MIT · .NET</p>
   <h1>The work queue that <em>knows its limits.</em></h1>
-  <p class="hero-sub">TownSuite.WorkQueues is a lightweight message bus and work queue for .NET, backed by <strong>SQL Server</strong>, <strong>PostgreSQL</strong>, or <strong>Redis</strong>. No broker to deploy, no new infrastructure to babysit — your queue lives where your data already does.</p>
+  <p class="hero-sub">TownSuite.WorkQueues is a lightweight message bus and work queue for .NET, backed by <strong>SQL Server</strong>, <strong>PostgreSQL</strong>, <strong>Redis</strong>, or <strong>SQLite</strong>. No broker to deploy, no new infrastructure to babysit — your queue lives where your data already does.</p>
   <div class="hero-actions">
     <div class="install" id="install-cmd" title="Click to copy">
       <span class="prompt">$</span>
@@ -229,6 +214,11 @@ options.RetryDelay = <span class="t">TimeSpan</span>.<span class="m">FromSeconds
           <p>For when the queue can be in memory and the database round-trip is overhead you don't want. No setup scripts required.</p>
           <div class="backend-scripts">no scripts — point it at<br>your Redis connection</div>
         </div>
+        <div class="backend-row">
+          <div class="backend-name"><span class="tick">[~]</span>SQLite <span class="backend-tag">local dev</span></div>
+          <p>Share a single <code>.db</code> file across processes on the same machine — a web frontend enqueuing, a worker consuming — with no database server to run. Uses a visibility-timeout claim pattern with WAL mode for concurrent access. Not intended for production.</p>
+          <div class="backend-scripts">no scripts — migration<br>service creates the file</div>
+        </div>
       </div>
     </div>
   </div>
@@ -313,17 +303,7 @@ options.RetryDelay = <span class="t">TimeSpan</span>.<span class="m">FromSeconds
 </main>
 
 <!-- ============ FOOTER ============ -->
-<footer>
-  <div class="wrap footer-inner">
-    <span>© TownSuite · MIT License</span>
-    <nav class="footer-links">
-      <a href="{{ site.github_repo }}" target="_blank" rel="noopener">GitHub</a>
-      <a href="{{ site.github_repo }}/blob/main/Readme.md" target="_blank" rel="noopener">README</a>
-      <a href="{{ site.github_repo }}/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
-      <a href="{{ site.github_repo }}/issues" target="_blank" rel="noopener">Issues</a>
-    </nav>
-  </div>
-</footer>
+{% include footer.html %}
 
 <script>
   document.getElementById('install-cmd').addEventListener('click', function () {

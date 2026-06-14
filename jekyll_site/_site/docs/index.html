@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Getting Started — TownSuite.WorkQueues — a work queue in the database you already run</title>
+<meta name="description" content="Install TownSuite.WorkQueues and send your first message in under five minutes.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;650;700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/TownSuite.WorkQueues/assets/css/main.css">
+<!-- Begin Jekyll SEO tag v2.9.0 -->
+<title>Getting Started — TownSuite.WorkQueues | TownSuite.WorkQueues</title>
+<meta name="generator" content="Jekyll v4.4.1" />
+<meta property="og:title" content="Getting Started — TownSuite.WorkQueues" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Install TownSuite.WorkQueues and send your first message in under five minutes." />
+<meta name="twitter:description" property="og:description" content="Install TownSuite.WorkQueues and send your first message in under five minutes." />
+<link rel="canonical" href="http://localhost:4000/TownSuite.WorkQueues/docs/" />
+<meta property="og:url" content="http://localhost:4000/TownSuite.WorkQueues/docs/" />
+<meta property="og:site_name" content="TownSuite.WorkQueues" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="Getting Started — TownSuite.WorkQueues" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebPage","description":"Install TownSuite.WorkQueues and send your first message in under five minutes.","headline":"Getting Started — TownSuite.WorkQueues","url":"http://localhost:4000/TownSuite.WorkQueues/docs/"}</script>
+<!-- End Jekyll SEO tag -->
+
+</head>
+<body data-anim="on">
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="wordmark" href="/TownSuite.WorkQueues/">
+      <span class="wordmark-box"></span>
+      <span>TownSuite<span class="dim">.</span>WorkQueues</span>
+    </a>
+    <nav class="nav-links">
+      <a href="/TownSuite.WorkQueues/#why">Why</a>
+      <a href="/TownSuite.WorkQueues/#api">API</a>
+      <a href="/TownSuite.WorkQueues/#reliability">Reliability</a>
+      <a href="/TownSuite.WorkQueues/#backends">Backends</a>
+      <a href="/TownSuite.WorkQueues/#benchmarks">Benchmarks</a>
+      <a href="/TownSuite.WorkQueues/docs/">Docs</a>
+      <a class="nav-gh" href="https://github.com/TownSuite/TownSuite.WorkQueues" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<div class="docs-shell">
+  <div class="wrap docs-wrap">
+    <aside class="docs-sidebar">
+      <nav class="docs-nav">
+        <a class="docs-home-link active" href="/TownSuite.WorkQueues/docs/">Getting Started</a>
+        <div class="docs-nav-group">
+          <p class="docs-nav-label">Backends</p>
+          <a href="/TownSuite.WorkQueues/docs/backends/postgres/">PostgreSQL</a>
+          <a href="/TownSuite.WorkQueues/docs/backends/sqlserver/">SQL Server</a>
+          <a href="/TownSuite.WorkQueues/docs/backends/redis/">Redis</a>
+          <a href="/TownSuite.WorkQueues/docs/backends/sqlite/">SQLite <span class="docs-badge">local dev</span></a>
+        </div>
+        <div class="docs-nav-group">
+          <p class="docs-nav-label">Reference</p>
+          <a href="/TownSuite.WorkQueues/docs/configuration/">Configuration</a>
+          <a href="/TownSuite.WorkQueues/docs/migrating/">Migrating from v1</a>
+        </div>
+      </nav>
+    </aside>
+    <main class="docs-content">
+      <h1 id="getting-started">Getting Started</h1>
+
+<p>TownSuite.WorkQueues is a .NET message bus and work queue backed by a table in the database you already run. No broker process, no new infrastructure — pick a backend and go.</p>
+
+<h2 id="install">Install</h2>
+
+<p>Each backend is a separate NuGet package:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># PostgreSQL</span>
+dotnet add package TownSuite.WorkQueues.Postgres
+
+<span class="c"># SQL Server</span>
+dotnet add package TownSuite.WorkQueues.SqlServer
+
+<span class="c"># Redis</span>
+dotnet add package TownSuite.WorkQueues.Redis
+
+<span class="c"># SQLite — local development only</span>
+dotnet add package TownSuite.WorkQueues.Sqlite
+</code></pre></div></div>
+
+<h2 id="create-the-schema">Create the schema</h2>
+
+<p><strong>PostgreSQL and SQL Server</strong> — register the migration hosted service to apply DDL automatically on startup, or run the scripts from the <code class="language-plaintext highlighter-rouge">scripts/</code> folder manually:</p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// PostgreSQL</span>
+<span class="n">services</span><span class="p">.</span><span class="nf">AddSingleton</span><span class="p">(</span><span class="k">new</span> <span class="n">SqlTransportOptions</span>
+<span class="p">{</span>
+    <span class="n">ConnectionString</span> <span class="p">=</span> <span class="s">"Host=localhost;Database=myapp;Username=app;Password=secret"</span><span class="p">,</span>
+    <span class="n">Schema</span> <span class="p">=</span> <span class="s">"transport"</span>
+<span class="p">});</span>
+<span class="n">services</span><span class="p">.</span><span class="nf">AddPostgresMigrationHostedService</span><span class="p">();</span>
+
+<span class="c1">// SQL Server</span>
+<span class="n">services</span><span class="p">.</span><span class="nf">AddSingleton</span><span class="p">(</span><span class="k">new</span> <span class="n">SqlServerTransportOptions</span>
+<span class="p">{</span>
+    <span class="n">ConnectionString</span> <span class="p">=</span> <span class="s">"Server=.;Database=myapp;Integrated Security=true"</span><span class="p">,</span>
+    <span class="n">Schema</span> <span class="p">=</span> <span class="s">"dbo"</span>
+<span class="p">});</span>
+<span class="n">services</span><span class="p">.</span><span class="nf">AddSqlServerMigrationHostedService</span><span class="p">();</span>
+</code></pre></div></div>
+
+<p><strong>SQLite</strong> — the migration service creates the file and table automatically. No SQL scripts needed:</p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">services</span><span class="p">.</span><span class="nf">AddSingleton</span><span class="p">(</span><span class="k">new</span> <span class="n">SqliteTransportOptions</span>
+<span class="p">{</span>
+    <span class="n">ConnectionString</span> <span class="p">=</span> <span class="s">"Data Source=./workqueue.db"</span>
+<span class="p">});</span>
+<span class="n">services</span><span class="p">.</span><span class="nf">AddSqliteMigrationHostedService</span><span class="p">();</span>
+</code></pre></div></div>
+
+<p><strong>Redis</strong> — no schema needed. See the <a href="/TownSuite.WorkQueues/docs/backends/redis/">Redis backend</a> page for options.</p>
+
+<h2 id="define-a-message-and-consumer">Define a message and consumer</h2>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">public</span> <span class="k">record</span> <span class="nc">OrderSubmitted</span><span class="p">(</span><span class="n">Guid</span> <span class="n">OrderId</span><span class="p">,</span> <span class="kt">string</span> <span class="n">Customer</span><span class="p">);</span>
+
+<span class="k">public</span> <span class="k">class</span> <span class="nc">OrderConsumer</span> <span class="p">:</span> <span class="n">IConsumer</span><span class="p">&lt;</span><span class="n">OrderSubmitted</span><span class="p">&gt;</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">async</span> <span class="n">Task</span> <span class="nf">Consume</span><span class="p">(</span><span class="n">ConsumeContext</span><span class="p">&lt;</span><span class="n">OrderSubmitted</span><span class="p">&gt;</span> <span class="n">ctx</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="c1">// ctx.Message    — typed payload</span>
+        <span class="c1">// ctx.MessageId  — stable UUID, same across retries</span>
+        <span class="c1">// ctx.SentTime   — when Publish() was called</span>
+        <span class="k">await</span> <span class="nf">ProcessOrder</span><span class="p">(</span><span class="n">ctx</span><span class="p">.</span><span class="n">Message</span><span class="p">);</span>
+        <span class="c1">// returning normally acknowledges the message</span>
+        <span class="c1">// throwing triggers a retry (up to MaxRetries times)</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h2 id="register-and-publish">Register and publish</h2>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// With DI (PostgreSQL example)</span>
+<span class="n">services</span><span class="p">.</span><span class="nf">AddPostgresMessageBus</span><span class="p">((</span><span class="n">sp</span><span class="p">,</span> <span class="n">bus</span><span class="p">)</span> <span class="p">=&gt;</span>
+<span class="p">{</span>
+    <span class="n">bus</span><span class="p">.</span><span class="n">Subscribe</span><span class="p">&lt;</span><span class="n">OrderSubmitted</span><span class="p">,</span> <span class="n">OrderConsumer</span><span class="p">&gt;();</span>
+<span class="p">});</span>
+
+<span class="c1">// Without DI</span>
+<span class="kt">var</span> <span class="n">bus</span> <span class="p">=</span> <span class="k">new</span> <span class="nf">PostgresMessageBus</span><span class="p">(</span><span class="n">options</span><span class="p">,</span> <span class="n">logger</span><span class="p">);</span>
+<span class="n">bus</span><span class="p">.</span><span class="nf">Subscribe</span><span class="p">(</span><span class="k">new</span> <span class="nf">OrderConsumer</span><span class="p">());</span>
+
+<span class="c1">// Publish</span>
+<span class="k">await</span> <span class="n">bus</span><span class="p">.</span><span class="nf">Publish</span><span class="p">(</span><span class="k">new</span> <span class="nf">OrderSubmitted</span><span class="p">(</span><span class="n">Guid</span><span class="p">.</span><span class="nf">NewGuid</span><span class="p">(),</span> <span class="s">"alice@example.com"</span><span class="p">));</span>
+
+<span class="c1">// Scheduled delivery — no earlier than 5 minutes from now</span>
+<span class="k">await</span> <span class="n">bus</span><span class="p">.</span><span class="nf">Publish</span><span class="p">(</span><span class="k">new</span> <span class="n">ReminderEmail</span> <span class="p">{</span> <span class="n">UserId</span> <span class="p">=</span> <span class="n">userId</span> <span class="p">},</span>
+    <span class="n">deliverAfter</span><span class="p">:</span> <span class="n">DateTimeOffset</span><span class="p">.</span><span class="n">UtcNow</span><span class="p">.</span><span class="nf">AddMinutes</span><span class="p">(</span><span class="m">5</span><span class="p">));</span>
+</code></pre></div></div>
+
+<p>The polling loop starts when the bus is constructed. Messages are delivered within one <code class="language-plaintext highlighter-rouge">MaxWaitTime</code> cycle (default: 5 seconds).</p>
+
+<h2 id="next-steps">Next steps</h2>
+
+<ul>
+  <li><a href="/TownSuite.WorkQueues/docs/configuration/">Configuration reference</a> — batch size, retries, and delays</li>
+  <li><a href="/TownSuite.WorkQueues/docs/backends/postgres/">PostgreSQL backend</a></li>
+  <li><a href="/TownSuite.WorkQueues/docs/backends/sqlserver/">SQL Server backend</a></li>
+  <li><a href="/TownSuite.WorkQueues/docs/backends/redis/">Redis backend</a></li>
+  <li><a href="/TownSuite.WorkQueues/docs/backends/sqlite/">SQLite backend</a> — multi-process local development</li>
+</ul>
+
+    </main>
+  </div>
+</div>
+<footer>
+  <div class="wrap footer-inner">
+    <span>© TownSuite · MIT License</span>
+    <nav class="footer-links">
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/blob/main/Readme.md" target="_blank" rel="noopener">README</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/issues" target="_blank" rel="noopener">Issues</a>
+    </nav>
+  </div>
+</footer>
+
+
+</body>
+</html>
