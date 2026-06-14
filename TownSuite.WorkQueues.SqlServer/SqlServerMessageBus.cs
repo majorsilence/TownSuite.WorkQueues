@@ -15,6 +15,7 @@ namespace TownSuite.WorkQueues.SqlServer;
 public class SqlServerMessageBus : IMessageBus
 {
     private readonly CancellationTokenSource _cts = new();
+    private int _disposed;
     private readonly ConcurrentDictionary<Type, ConcurrentDictionary<object, Func<object, Guid, DateTimeOffset, Task>>> _handlers = new();
     private readonly ConcurrentDictionary<Type, ConcurrentDictionary<object, Func<object, Task>>> _faultHandlers = new();
     private readonly ConcurrentDictionary<Type, Func<string, Exception, int, Task>> _faultDispatchers = new();
@@ -348,6 +349,7 @@ public class SqlServerMessageBus : IMessageBus
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _cts.Cancel();
         try { await _pollingTask.WaitAsync(TimeSpan.FromSeconds(10)); }
         catch (OperationCanceledException) { }

@@ -3,24 +3,23 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 CREATE TABLE [dbo].[workqueue](
-	[id] [int] IDENTITY(1,1) NOT NULL,
-	[timecreatedutc] [datetime] NOT NULL,
-	[channel] [nvarchar](500) NOT NULL,
-	[payload] [nvarchar](max) NOT NULL,
-	[timeprocessedutc] [datetime] NULL,
-	[failedat] [datetime] NULL,
-	[retrycount] [int] NOT NULL CONSTRAINT [DEFAULT_WorkQueue_RetryCount] DEFAULT (0),
- CONSTRAINT [PK_WorkQueue] PRIMARY KEY CLUSTERED
-(
-	[Id] ASC
-)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
+	[id]               [int]             IDENTITY(1,1) NOT NULL,
+	[messageid]        UNIQUEIDENTIFIER  NOT NULL CONSTRAINT [DEFAULT_WorkQueue_MessageId]       DEFAULT (NEWID()),
+	[timecreatedutc]   [datetime]        NOT NULL CONSTRAINT [DEFAULT_WorkQueue_TimeCreatedUtc]  DEFAULT (GETUTCDATE()),
+	[channel]          [nvarchar](500)   NOT NULL,
+	[payload]          [nvarchar](max)   NOT NULL,
+	[timeprocessedutc] [datetime]        NULL,
+	[failedat]         [datetime]        NULL,
+	[retrycount]       [int]             NOT NULL CONSTRAINT [DEFAULT_WorkQueue_RetryCount]      DEFAULT (0),
+	[scheduledfor]     [datetime]        NULL,
+	CONSTRAINT [PK_WorkQueue] PRIMARY KEY CLUSTERED ([id] ASC)
+		WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF,
+		      ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
 ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
-GO
-ALTER TABLE [dbo].[workqueue] ADD  CONSTRAINT [DEFAULT_WorkQueue_TimeCreatedUtc]  DEFAULT (getutcdate()) FOR [timecreatedutc]
 GO
 CREATE NONCLUSTERED INDEX [IX_WorkQueue_Channel_Unprocessed] ON [dbo].[workqueue]
 (
-	[channel] ASC,
+	[channel]        ASC,
 	[timecreatedutc] ASC
 )
 WHERE ([timeprocessedutc] IS NULL AND [failedat] IS NULL)

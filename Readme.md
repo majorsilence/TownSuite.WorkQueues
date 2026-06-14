@@ -98,6 +98,7 @@ cycle (within `MaxWaitTime`, default 5 s).
 - [Work Queue (direct enqueue/dequeue)](#work-queue-direct-enqueuededequeue)
 - [Message Bus (publish/subscribe)](#message-bus-publishsubscribe)
 - [SQL Server Message Bus](#sql-server-message-bus)
+- [SQLite Backend (local development)](#sqlite-backend-local-development)
 - [Redis Backend](#redis-backend)
 - [Dead-Letter Queue & Retries](#dead-letter-queue--retries)
   - [Programmatic replay via ReplayDeadLettered\<T\>](#programmatic-replay-via-replaydeadletteredt)
@@ -330,6 +331,98 @@ and [WORKER_SERVICES.md](WORKER_SERVICES.md) for full examples.
 | `MaxBatchSize` | `100` (inherited) | Messages claimed per polling cycle |
 | `MaxWaitTime` | `5s` (inherited) | Pause when the queue is empty |
 | `MaxRetries` | `3` (inherited) | Attempts before dead-lettering |
+
+---
+
+## SQLite Backend (local development)
+
+`TownSuite.WorkQueues.Sqlite` provides a `SqliteMessageBus` backed by a local SQLite file.
+It is intended for **local development** where multiple processes on the same machine (for
+example, a frontend that enqueues work and a separate worker that processes it) need to
+communicate through a shared queue without running a database server.
+
+> **Not for production.** SQLite serializes writes to a single file. For production workloads
+> or multi-machine deployments, use the Postgres, SQL Server, or Redis backends.
+
+### How claiming works
+
+SQLite does not support `FOR UPDATE SKIP LOCKED`. Instead, the bus uses a `lockeduntil` /
+`locktoken` column pair. A single atomic `UPDATE ... WHERE id IN (SELECT ... LIMIT n)` claims
+a batch exclusively — SQLite's single-writer guarantee means only one process wins. Other
+pollers see `lockeduntil` set to a future time and skip those rows.
+
+If the claiming process crashes before completing, the message becomes available again once
+`LockTimeout` elapses (default 60 s). This differs from the Postgres/SQL Server backends where
+a transaction rollback makes the row immediately available.
+
+WAL mode is enabled automatically by `SqliteMigrationHostedService` on first startup so that a
+reader (e.g. your frontend enqueueing) and a writer (e.g. your worker processing) do not block
+each other.
+
+### Installation
+
+```bash
+dotnet add package TownSuite.WorkQueues.Sqlite
+```
+
+### Automatic migrations
+
+`SqliteMigrationHostedService` creates the `workqueue` table, index, and enables WAL mode on
+first startup. All DDL is idempotent — safe to run on every startup.
+
+```csharp
+builder.Services.AddSingleton(new SqliteTransportOptions
+{
+    ConnectionString = "Data Source=./workqueue.db",
+    MaxRetries       = 3,
+    LockTimeout      = TimeSpan.FromSeconds(60)   // default; tune to your slowest consumer
+});
+
+builder.Services.AddSqliteMigrationHostedService();
+```
+
+### Wiring up the bus
+
+```csharp
+builder.Services.AddSqliteMessageBus((sp, bus) =>
+{
+    bus.Subscribe(sp.GetRequiredService<OrderConsumer>());
+});
+builder.Services.AddTransient<OrderConsumer>();
+builder.Services.AddHostedService<MessageBusHostedService>();
+```
+
+Consumer classes, the `MessageBusHostedService` wrapper, and publishing via `IMessageBus` are
+identical to the other backends — see [Message Bus (publish/subscribe)](#message-bus-publishsubscribe)
+and [WORKER_SERVICES.md](WORKER_SERVICES.md) for full examples.
+
+### `SqliteTransportOptions` reference
+
+| Property | Default | Description |
+|---|---|---|
+| `ConnectionString` | — | SQLite connection string, e.g. `Data Source=./workqueue.db` |
+| `LockTimeout` | `60s` | How long a claimed message is held before another process may reclaim it. Set above your slowest consumer's expected processing time. |
+| `MaxBatchSize` | `100` (inherited) | Messages claimed per polling cycle |
+| `MaxWaitTime` | `5s` (inherited) | Pause when the queue is empty |
+| `MaxRetries` | `3` (inherited) | Attempts before dead-lettering |
+| `RetryDelay` | `0` (inherited) | Minimum delay between retries |
+
+### Inspecting the database
+
+Because the queue is a plain SQLite file you can open it with any SQLite tool
+(e.g. [DB Browser for SQLite](https://sqlitebrowser.org/)) to inspect pending, processed, and
+dead-lettered messages:
+
+```sql
+-- pending messages
+SELECT * FROM workqueue WHERE timeprocessedutc IS NULL AND failedat IS NULL ORDER BY timecreatedutc;
+
+-- dead-lettered messages
+SELECT * FROM workqueue WHERE failedat IS NOT NULL ORDER BY failedat DESC;
+
+-- messages currently claimed by a worker
+SELECT * FROM workqueue WHERE locktoken IS NOT NULL AND lockeduntil > datetime('now');
+```
 
 ---
 

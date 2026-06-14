@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.5.0] — 2026-06-14
+
+### New features
+
+- **SQLite backend** (`TownSuite.WorkQueues.Sqlite`) — A new `SqliteMessageBus` backed by a
+  local SQLite file. Designed for local development scenarios where multiple processes on the
+  same machine (e.g. a frontend that enqueues and a separate worker that dequeues) need to
+  share a queue without running a database server. WAL mode is enabled automatically so readers
+  and writers do not block each other. Claiming is emulated with a `lockeduntil` / `locktoken`
+  column pair — SQLite's single-writer serialization makes this race-free across processes.
+  Supports all `IMessageBus` features: at-least-once delivery, retry, retry delay, scheduled
+  delivery, dead-lettering, `Fault<T>` consumers, `ReplayDeadLettered<T>`, and scoped consumers.
+  See [SQLite Backend (local development)](Readme.md#sqlite-backend-local-development) for setup
+  and a note on the `LockTimeout` difference vs. the transaction-based backends.
+
+---
+
 ## [2.4.0] — 2026-06-13
 
 ### New features

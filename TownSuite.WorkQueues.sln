@@ -15,6 +15,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TownSuite.WorkQueues.Redis"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TownSuite.WorkQueues.SqlServer", "TownSuite.WorkQueues.SqlServer\TownSuite.WorkQueues.SqlServer.csproj", "{DCA95E49-4CAB-4728-8BDA-11BCA246AB8E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TownSuite.WorkQueues.Sqlite", "TownSuite.WorkQueues.Sqlite\TownSuite.WorkQueues.Sqlite.csproj", "{FDFB7E23-BB5A-48DF-9776-8ABE64216244}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -97,6 +99,18 @@ Global
 		{DCA95E49-4CAB-4728-8BDA-11BCA246AB8E}.Release|x64.Build.0 = Release|Any CPU
 		{DCA95E49-4CAB-4728-8BDA-11BCA246AB8E}.Release|x86.ActiveCfg = Release|Any CPU
 		{DCA95E49-4CAB-4728-8BDA-11BCA246AB8E}.Release|x86.Build.0 = Release|Any CPU
+		{FDFB7E23-BB5A-48DF-9776-8ABE64216244}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FDFB7E23-BB5A-48DF-9776-8ABE64216244}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FDFB7E23-BB5A-48DF-9776-8ABE64216244}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{FDFB7E23-BB5A-48DF-9776-8ABE64216244}.Debug|x64.Build.0 = Debug|Any CPU
+		{FDFB7E23-BB5A-48DF-9776-8ABE64216244}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{FDFB7E23-BB5A-48DF-9776-8ABE64216244}.Debug|x86.Build.0 = Debug|Any CPU
+		{FDFB7E23-BB5A-48DF-9776-8ABE64216244}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FDFB7E23-BB5A-48DF-9776-8ABE64216244}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FDFB7E23-BB5A-48DF-9776-8ABE64216244}.Release|x64.ActiveCfg = Release|Any CPU
+		{FDFB7E23-BB5A-48DF-9776-8ABE64216244}.Release|x64.Build.0 = Release|Any CPU
+		{FDFB7E23-BB5A-48DF-9776-8ABE64216244}.Release|x86.ActiveCfg = Release|Any CPU
+		{FDFB7E23-BB5A-48DF-9776-8ABE64216244}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

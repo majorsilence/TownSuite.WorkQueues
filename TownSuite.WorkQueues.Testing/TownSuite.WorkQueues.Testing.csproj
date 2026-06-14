@@ -31,11 +31,13 @@
         <PackageReference Include="Testcontainers.MsSql" Version="4.8.1" />
         <PackageReference Include="Testcontainers.PostgreSql" Version="4.8.1" />
         <PackageReference Include="Testcontainers.Redis" Version="4.8.1" />
+        <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.6" />
     </ItemGroup>
 
     <ItemGroup>
       <ProjectReference Include="..\TownSuite.WorkQueues.Postgres\TownSuite.WorkQueues.Postgres.csproj" />
       <ProjectReference Include="..\TownSuite.WorkQueues.Redis\TownSuite.WorkQueues.Redis.csproj" />
+      <ProjectReference Include="..\TownSuite.WorkQueues.Sqlite\TownSuite.WorkQueues.Sqlite.csproj" />
       <ProjectReference Include="..\TownSuite.WorkQueues.SqlServer\TownSuite.WorkQueues.SqlServer.csproj" />
       <ProjectReference Include="..\TownSuite.WorkQueues\TownSuite.WorkQueues.csproj" />
     </ItemGroup>
