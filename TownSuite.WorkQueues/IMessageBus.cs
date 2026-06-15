@@ -31,14 +31,19 @@ public interface IMessageBus : IAsyncDisposable
     /// Serialises <paramref name="message"/> and schedules it for delivery no earlier than
     /// <paramref name="deliverAfter"/>. The message will not be dispatched to consumers until
     /// the current time exceeds <paramref name="deliverAfter"/>.
-    /// Not supported by the Redis transport — throws <see cref="NotSupportedException"/>.
+    /// Transports that do not support scheduled delivery throw <see cref="NotSupportedException"/>.
     /// </summary>
     /// <typeparam name="T">The message type.</typeparam>
     /// <param name="message">The message to publish.</param>
     /// <param name="deliverAfter">Earliest time the message may be delivered.</param>
     /// <param name="cancellationToken">Token to cancel the publish operation.</param>
+    /// <exception cref="NotSupportedException">
+    /// Thrown by the default implementation. Override in transports that support scheduled delivery.
+    /// </exception>
     Task Publish<T>(T message, DateTimeOffset deliverAfter, CancellationToken cancellationToken = default)
-        => Publish(message, cancellationToken);
+        => throw new NotSupportedException(
+            $"{GetType().Name} does not support scheduled delivery. " +
+            "Use PostgresMessageBus, SqlServerMessageBus, or SqliteMessageBus.");
 
     /// <summary>
     /// Registers <paramref name="consumer"/> to receive messages of type <typeparamref name="T"/>.

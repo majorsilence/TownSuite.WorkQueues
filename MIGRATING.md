@@ -320,7 +320,7 @@ WHERE channel = 'MyApp.Models.OrderPayload'
 | Transaction | You open and commit | Bus-managed |
 | Retry on failure | Increment `offset`, loop again | Automatic, up to `MaxRetries` |
 | Dead-letter | No built-in; you decide what to do | `failedat` column, queryable |
-| Database | PostgreSQL and SQL Server | PostgreSQL only |
+| Database | PostgreSQL and SQL Server | PostgreSQL, SQL Server, Redis, SQLite |
 | Multiple consumers | Not applicable (single dequeuer per item) | Multiple `Subscribe` calls |
 | Ordered delivery | Yes (dequeue by id ascending) | Yes (poll by timecreatedutc ascending) |
 

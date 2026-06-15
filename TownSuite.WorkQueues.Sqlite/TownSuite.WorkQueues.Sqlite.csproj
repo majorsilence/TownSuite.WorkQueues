@@ -4,7 +4,12 @@
         <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <Version>2.4.0</Version>
+        <PackageId>TownSuite.WorkQueues.Sqlite</PackageId>
+        <Version>2.5.0</Version>
+        <Description>SQLite backend for TownSuite.WorkQueues. Designed for local development where multiple processes share a single .db file. WAL mode, visibility-timeout claiming, automatic schema migration. Not for production.</Description>
+        <PackageTags>workqueue;messagebus;sqlite;local-development;background-jobs;queue</PackageTags>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageReleaseNotes>v2.5.0 — initial release of the SQLite backend. See CHANGELOG.md in the core package for full notes.</PackageReleaseNotes>
     </PropertyGroup>
 
     <ItemGroup>
