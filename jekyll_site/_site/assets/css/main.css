@@ -1,24 +1,62 @@
 /* TownSuite.WorkQueues — project site
    Aesthetic: utilitarian engineering datasheet.
-   Paper-warm background, ink foreground, mono labels, hairline rules,
-   single accent color. */
+   Cool-slate background, ink foreground, mono labels, hairline rules,
+   TownSuite blue accent. */
 
 :root {
-  --paper: oklch(0.972 0.006 85);
-  --paper-raised: oklch(0.99 0.004 85);
-  --ink: oklch(0.235 0.012 75);
-  --ink-soft: oklch(0.45 0.015 75);
-  --ink-faint: oklch(0.62 0.012 75);
-  --rule: oklch(0.86 0.012 80);
-  --rule-strong: oklch(0.32 0.012 75);
-  --accent: #B4540A;
-  --accent-ink: color-mix(in oklch, var(--accent) 82%, var(--ink));
-  --accent-wash: color-mix(in oklch, var(--accent) 9%, var(--paper));
-  --code-bg: oklch(0.955 0.008 85);
+  --paper: oklch(0.975 0.004 250);
+  --paper-raised: oklch(0.992 0.003 250);
+  --ink: oklch(0.255 0.022 250);
+  --ink-soft: oklch(0.46 0.026 250);
+  --ink-faint: oklch(0.62 0.022 250);
+  --rule: oklch(0.87 0.013 250);
+  --rule-strong: oklch(0.34 0.022 250);
+  --accent: #00578E;
+  --accent-ink: color-mix(in oklch, var(--accent) 88%, var(--ink));
+  --accent-wash: color-mix(in oklch, var(--accent) 10%, var(--paper));
+  --code-bg: oklch(0.955 0.008 250);
+  --syn-type: oklch(0.5 0.12 210);
+  --syn-string: oklch(0.5 0.1 150);
   --font-display: "Archivo", "Helvetica Neue", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   --max: 1080px;
 }
+
+/* ---------- dark theme ---------- */
+
+:root[data-theme="dark"] {
+  --paper: oklch(0.185 0.018 255);
+  --paper-raised: oklch(0.225 0.02 255);
+  --ink: oklch(0.93 0.012 250);
+  --ink-soft: oklch(0.74 0.018 250);
+  --ink-faint: oklch(0.57 0.018 250);
+  --rule: oklch(0.33 0.018 255);
+  --rule-strong: oklch(0.5 0.022 255);
+  --accent-ink: color-mix(in oklch, var(--accent) 45%, white);
+  --accent-wash: color-mix(in oklch, var(--accent) 24%, var(--paper));
+  --code-bg: oklch(0.235 0.02 255);
+  --syn-type: oklch(0.74 0.13 210);
+  --syn-string: oklch(0.74 0.13 150);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    --paper: oklch(0.185 0.018 255);
+    --paper-raised: oklch(0.225 0.02 255);
+    --ink: oklch(0.93 0.012 250);
+    --ink-soft: oklch(0.74 0.018 250);
+    --ink-faint: oklch(0.57 0.018 250);
+    --rule: oklch(0.33 0.018 255);
+    --rule-strong: oklch(0.5 0.022 255);
+    --accent-ink: color-mix(in oklch, var(--accent) 45%, white);
+    --accent-wash: color-mix(in oklch, var(--accent) 24%, var(--paper));
+    --code-bg: oklch(0.235 0.02 255);
+    --syn-type: oklch(0.74 0.13 210);
+    --syn-string: oklch(0.74 0.13 150);
+  }
+}
+
+html { color-scheme: light dark; }
 
 * { box-sizing: border-box; }
 
@@ -73,12 +111,13 @@ p { text-wrap: pretty; }
 }
 
 .wordmark-box {
-  width: 14px;
-  height: 14px;
-  background: var(--accent);
+  width: 20px;
+  height: 20px;
   display: inline-block;
   flex-shrink: 0;
 }
+
+.wordmark-box img { width: 100%; height: 100%; display: block; }
 
 .wordmark .dim { color: var(--ink-faint); font-weight: 400; }
 
@@ -101,6 +140,7 @@ p { text-wrap: pretty; }
   border: 1px solid var(--rule-strong);
   padding: 7px 14px;
   color: var(--ink) !important;
+  white-space: nowrap;
   transition: background 120ms ease, color 120ms ease;
 }
 
@@ -168,7 +208,7 @@ p { text-wrap: pretty; }
   font-family: var(--font-mono);
   font-size: 14px;
   background: var(--ink);
-  color: oklch(0.95 0.006 85);
+  color: var(--paper);
   padding: 14px 20px;
   display: flex;
   align-items: center;
@@ -424,8 +464,8 @@ pre {
 }
 
 code .k  { color: var(--accent-ink); font-weight: 600; }
-code .t  { color: oklch(0.45 0.09 250); }
-code .s  { color: oklch(0.5 0.1 150); }
+code .t  { color: var(--syn-type); }
+code .s  { color: var(--syn-string); }
 code .c  { color: var(--ink-faint); font-style: italic; }
 code .m  { color: var(--ink-soft); }
 

@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TownSuite.WorkQueues — a work queue in the database you already run</title>
 <meta name="description" content="A lightweight message bus and work queue for .NET, backed by SQL Server, PostgreSQL, Redis, or SQLite. No broker to deploy — your queue lives where your data already does.">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('wq-theme') || 'system';
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {
+      document.documentElement.setAttribute('data-theme', 'system');
+    }
+  })();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;650;700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
@@ -32,7 +42,7 @@
 <header class="nav">
   <div class="wrap nav-inner">
     <a class="wordmark" href="/TownSuite.WorkQueues/">
-      <span class="wordmark-box"></span>
+      <span class="wordmark-box"><img src="/TownSuite.WorkQueues/assets/logo.svg" alt="TownSuite"></span>
       <span>TownSuite<span class="dim">.</span>WorkQueues</span>
     </a>
     <nav class="nav-links">
@@ -57,7 +67,7 @@
   <div class="hero-actions">
     <div class="install" id="install-cmd" title="Click to copy">
       <span class="prompt">$</span>
-      <span>dotnet add package TownSuite.WorkQueue</span>
+      <span>dotnet add package TownSuite.WorkQueues</span>
     </div>
     <a class="btn-secondary" href="https://github.com/TownSuite/TownSuite.WorkQueues" target="_blank" rel="noopener">View source ↗</a>
   </div>
@@ -364,7 +374,7 @@ options.RetryDelay = <span class="t">TimeSpan</span>.<span class="m">FromSeconds
     var sel = window.getSelection();
     sel.removeAllRanges();
     sel.addRange(range);
-    navigator.clipboard && navigator.clipboard.writeText('dotnet add package TownSuite.WorkQueue');
+    navigator.clipboard && navigator.clipboard.writeText('dotnet add package TownSuite.WorkQueues');
   });
 </script>
 
