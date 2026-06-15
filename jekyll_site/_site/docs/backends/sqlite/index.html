@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQLite Backend — TownSuite.WorkQueues — a work queue in the database you already run</title>
+<meta name="description" content="Use the SQLite backend for local development with multiple processes sharing a single database file.">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('wq-theme') || 'system';
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {
+      document.documentElement.setAttribute('data-theme', 'system');
+    }
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;650;700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/TownSuite.WorkQueues/assets/css/main.css">
+<!-- Begin Jekyll SEO tag v2.9.0 -->
+<title>SQLite Backend — TownSuite.WorkQueues | TownSuite.WorkQueues</title>
+<meta name="generator" content="Jekyll v4.4.1" />
+<meta property="og:title" content="SQLite Backend — TownSuite.WorkQueues" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Use the SQLite backend for local development with multiple processes sharing a single database file." />
+<meta name="twitter:description" property="og:description" content="Use the SQLite backend for local development with multiple processes sharing a single database file." />
+<link rel="canonical" href="http://localhost:4000/TownSuite.WorkQueues/docs/backends/sqlite/" />
+<meta property="og:url" content="http://localhost:4000/TownSuite.WorkQueues/docs/backends/sqlite/" />
+<meta property="og:site_name" content="TownSuite.WorkQueues" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="SQLite Backend — TownSuite.WorkQueues" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebPage","description":"Use the SQLite backend for local development with multiple processes sharing a single database file.","headline":"SQLite Backend — TownSuite.WorkQueues","url":"http://localhost:4000/TownSuite.WorkQueues/docs/backends/sqlite/"}</script>
+<!-- End Jekyll SEO tag -->
+
+</head>
+<body data-anim="on">
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="wordmark" href="/TownSuite.WorkQueues/">
+      <span class="wordmark-box"><img src="/TownSuite.WorkQueues/assets/logo.svg" alt="TownSuite"></span>
+      <span>TownSuite<span class="dim">.</span>WorkQueues</span>
+    </a>
+    <nav class="nav-links">
+      <a href="/TownSuite.WorkQueues/#why">Why</a>
+      <a href="/TownSuite.WorkQueues/#api">API</a>
+      <a href="/TownSuite.WorkQueues/#reliability">Reliability</a>
+      <a href="/TownSuite.WorkQueues/#backends">Backends</a>
+      <a href="/TownSuite.WorkQueues/#benchmarks">Benchmarks</a>
+      <a href="/TownSuite.WorkQueues/docs/">Docs</a>
+      <a class="nav-gh" href="https://github.com/TownSuite/TownSuite.WorkQueues" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<div class="docs-shell">
+  <div class="wrap docs-wrap">
+    <aside class="docs-sidebar">
+      <nav class="docs-nav">
+        <a class="docs-home-link" href="/TownSuite.WorkQueues/docs/">Getting Started</a>
+        <div class="docs-nav-group">
+          <p class="docs-nav-label">Backends</p>
+          <a href="/TownSuite.WorkQueues/docs/backends/postgres/">PostgreSQL</a>
+          <a href="/TownSuite.WorkQueues/docs/backends/sqlserver/">SQL Server</a>
+          <a href="/TownSuite.WorkQueues/docs/backends/redis/">Redis</a>
+          <a href="/TownSuite.WorkQueues/docs/backends/sqlite/" class="active">SQLite <span class="docs-badge">local dev</span></a>
+        </div>
+        <div class="docs-nav-group">
+          <p class="docs-nav-label">Guides</p>
+          <a href="/TownSuite.WorkQueues/docs/workqueue-to-bus/">WorkQueue → Message Bus</a>
+          <a href="/TownSuite.WorkQueues/docs/migrating/">Migrating from v1</a>
+        </div>
+        <div class="docs-nav-group">
+          <p class="docs-nav-label">Reference</p>
+          <a href="/TownSuite.WorkQueues/docs/configuration/">Configuration</a>
+        </div>
+      </nav>
+    </aside>
+    <main class="docs-content">
+      <h1 id="sqlite-backend">SQLite Backend</h1>
+
+<div class="callout">
+<strong>Local development only.</strong> The SQLite backend is designed for scenarios where a frontend process enqueues work and a separate worker process consumes it — all on the same machine, sharing a single <code>.db</code> file. It is not intended for production deployments.
+</div>
+
+<h2 id="when-to-use-it">When to use it</h2>
+
+<ul>
+  <li>You want to run a local dev environment without Docker or a database server.</li>
+  <li>Your solution has multiple processes (e.g. a web frontend + a background worker) that need to share queue state.</li>
+  <li>You want a drop-in substitute for the Postgres or SQL Server bus that requires zero infrastructure.</li>
+</ul>
+
+<h2 id="install">Install</h2>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dotnet add package TownSuite.WorkQueues.Sqlite
+</code></pre></div></div>
+
+<h2 id="register-the-bus">Register the bus</h2>
+
+<p>The migration hosted service creates the database file, sets WAL mode, and applies the schema on startup:</p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">builder</span><span class="p">.</span><span class="n">Services</span><span class="p">.</span><span class="nf">AddSingleton</span><span class="p">(</span><span class="k">new</span> <span class="n">SqliteTransportOptions</span>
+<span class="p">{</span>
+    <span class="n">ConnectionString</span> <span class="p">=</span> <span class="s">"Data Source=./workqueue.db"</span><span class="p">,</span>
+    <span class="n">LockTimeout</span> <span class="p">=</span> <span class="n">TimeSpan</span><span class="p">.</span><span class="nf">FromSeconds</span><span class="p">(</span><span class="m">60</span><span class="p">)</span>  <span class="c1">// default</span>
+<span class="p">});</span>
+<span class="n">builder</span><span class="p">.</span><span class="n">Services</span><span class="p">.</span><span class="nf">AddSqliteMigrationHostedService</span><span class="p">();</span>
+<span class="n">builder</span><span class="p">.</span><span class="n">Services</span><span class="p">.</span><span class="nf">AddSqliteMessageBus</span><span class="p">((</span><span class="n">sp</span><span class="p">,</span> <span class="n">bus</span><span class="p">)</span> <span class="p">=&gt;</span>
+<span class="p">{</span>
+    <span class="n">bus</span><span class="p">.</span><span class="nf">Subscribe</span><span class="p">(</span><span class="k">new</span> <span class="nf">OrderConsumer</span><span class="p">());</span>
+    <span class="c1">// or DI-scoped:</span>
+    <span class="n">bus</span><span class="p">.</span><span class="n">Subscribe</span><span class="p">&lt;</span><span class="n">OrderSubmitted</span><span class="p">,</span> <span class="n">OrderConsumer</span><span class="p">&gt;();</span>
+<span class="p">});</span>
+</code></pre></div></div>
+
+<p>Both the frontend (publisher) and the worker (consumer) point at the same connection string. The database file is created the first time the migration service runs.</p>
+
+<h2 id="options-reference">Options reference</h2>
+
+<p>See <a href="/TownSuite.WorkQueues/docs/configuration/#sqlite--sqlitetransportoptions"><code class="language-plaintext highlighter-rouge">SqliteTransportOptions</code></a> for the full property table.</p>
+
+<p>The key SQLite-specific option is <code class="language-plaintext highlighter-rouge">LockTimeout</code>:</p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">new</span> <span class="n">SqliteTransportOptions</span>
+<span class="p">{</span>
+    <span class="n">ConnectionString</span> <span class="p">=</span> <span class="s">"Data Source=./workqueue.db"</span><span class="p">,</span>
+    <span class="n">LockTimeout</span> <span class="p">=</span> <span class="n">TimeSpan</span><span class="p">.</span><span class="nf">FromSeconds</span><span class="p">(</span><span class="m">120</span><span class="p">),</span>  <span class="c1">// set to exceed longest consumer processing time</span>
+    <span class="n">MaxBatchSize</span> <span class="p">=</span> <span class="m">50</span><span class="p">,</span>
+    <span class="n">MaxWaitTime</span> <span class="p">=</span> <span class="n">TimeSpan</span><span class="p">.</span><span class="nf">FromSeconds</span><span class="p">(</span><span class="m">2</span><span class="p">),</span>
+    <span class="n">MaxRetries</span> <span class="p">=</span> <span class="m">3</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h2 id="how-claiming-works-visibility-timeout">How claiming works (visibility timeout)</h2>
+
+<p>SQLite does not support <code class="language-plaintext highlighter-rouge">FOR UPDATE SKIP LOCKED</code>. Instead, claiming is emulated with <code class="language-plaintext highlighter-rouge">lockeduntil</code> and <code class="language-plaintext highlighter-rouge">locktoken</code> columns. A single atomic <code class="language-plaintext highlighter-rouge">UPDATE</code> claims a batch of rows:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">UPDATE</span> <span class="n">workqueue</span>
+<span class="k">SET</span> <span class="n">lockeduntil</span> <span class="o">=</span> <span class="o">@</span><span class="n">lockeduntil</span><span class="p">,</span> <span class="n">locktoken</span> <span class="o">=</span> <span class="o">@</span><span class="n">locktoken</span>
+<span class="k">WHERE</span> <span class="n">id</span> <span class="k">IN</span> <span class="p">(</span>
+    <span class="k">SELECT</span> <span class="n">id</span> <span class="k">FROM</span> <span class="n">workqueue</span>
+    <span class="k">WHERE</span> <span class="n">timeprocessedutc</span> <span class="k">IS</span> <span class="k">NULL</span>
+      <span class="k">AND</span> <span class="n">failedat</span> <span class="k">IS</span> <span class="k">NULL</span>
+      <span class="k">AND</span> <span class="p">(</span><span class="n">lockeduntil</span> <span class="k">IS</span> <span class="k">NULL</span> <span class="k">OR</span> <span class="n">lockeduntil</span> <span class="o">&lt;</span> <span class="o">@</span><span class="n">now</span><span class="p">)</span>
+      <span class="k">AND</span> <span class="p">(</span><span class="n">scheduledfor</span> <span class="k">IS</span> <span class="k">NULL</span> <span class="k">OR</span> <span class="n">scheduledfor</span> <span class="o">&lt;=</span> <span class="o">@</span><span class="n">now</span><span class="p">)</span>
+      <span class="k">AND</span> <span class="n">channel</span> <span class="k">IN</span> <span class="p">(...)</span>
+    <span class="k">ORDER</span> <span class="k">BY</span> <span class="n">timecreatedutc</span>
+    <span class="k">LIMIT</span> <span class="o">@</span><span class="n">maxMessages</span>
+<span class="p">)</span>
+</code></pre></div></div>
+
+<p>SQLite serializes all write operations, so only one process can execute this UPDATE at a time. Other pollers see <code class="language-plaintext highlighter-rouge">lockeduntil</code> already in the future and skip those rows.</p>
+
+<h2 id="wal-mode">WAL mode</h2>
+
+<p>The migration service enables WAL (Write-Ahead Logging) on the database file:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">PRAGMA</span> <span class="n">journal_mode</span><span class="o">=</span><span class="n">WAL</span>
+</code></pre></div></div>
+
+<p>WAL allows one writer and multiple concurrent readers to operate simultaneously — essential when a frontend process is publishing while a worker is consuming. Without it, concurrent access would serialize on file-level locks and produce <code class="language-plaintext highlighter-rouge">SQLITE_BUSY</code> errors. This setting is stored in the database file and only needs to be applied once.</p>
+
+<h2 id="crash-recovery-vs-transactional-backends">Crash recovery vs transactional backends</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th> </th>
+      <th>PostgreSQL / SQL Server</th>
+      <th>SQLite</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Crash recovery</td>
+      <td>Transaction rollback — rows immediately available</td>
+      <td><code class="language-plaintext highlighter-rouge">lockeduntil</code> expires — rows available after <code class="language-plaintext highlighter-rouge">LockTimeout</code></td>
+    </tr>
+    <tr>
+      <td>Recovery speed</td>
+      <td>Instant</td>
+      <td>Up to <code class="language-plaintext highlighter-rouge">LockTimeout</code> (default 60 s)</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Set <code class="language-plaintext highlighter-rouge">LockTimeout</code> to comfortably exceed the longest expected consumer processing time. If a message takes 45 seconds to process and <code class="language-plaintext highlighter-rouge">LockTimeout</code> is 30 seconds, another process may claim it before the first delivery finishes.</p>
+
+<h2 id="inspecting-the-queue">Inspecting the queue</h2>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- All pending messages</span>
+<span class="k">SELECT</span> <span class="n">id</span><span class="p">,</span> <span class="n">channel</span><span class="p">,</span> <span class="n">substr</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">60</span><span class="p">)</span> <span class="k">AS</span> <span class="n">payload</span><span class="p">,</span> <span class="n">timecreatedutc</span>
+<span class="k">FROM</span> <span class="n">workqueue</span>
+<span class="k">WHERE</span> <span class="n">timeprocessedutc</span> <span class="k">IS</span> <span class="k">NULL</span> <span class="k">AND</span> <span class="n">failedat</span> <span class="k">IS</span> <span class="k">NULL</span>
+<span class="k">ORDER</span> <span class="k">BY</span> <span class="n">timecreatedutc</span><span class="p">;</span>
+
+<span class="c1">-- Currently claimed (in-flight)</span>
+<span class="k">SELECT</span> <span class="n">id</span><span class="p">,</span> <span class="n">channel</span><span class="p">,</span> <span class="n">lockeduntil</span><span class="p">,</span> <span class="n">locktoken</span>
+<span class="k">FROM</span> <span class="n">workqueue</span>
+<span class="k">WHERE</span> <span class="n">lockeduntil</span> <span class="o">&gt;</span> <span class="nb">datetime</span><span class="p">(</span><span class="s1">'now'</span><span class="p">)</span>
+<span class="k">ORDER</span> <span class="k">BY</span> <span class="n">lockeduntil</span><span class="p">;</span>
+
+<span class="c1">-- Dead-lettered</span>
+<span class="k">SELECT</span> <span class="n">id</span><span class="p">,</span> <span class="n">channel</span><span class="p">,</span> <span class="n">failedat</span><span class="p">,</span> <span class="n">retrycount</span><span class="p">,</span> <span class="n">substr</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">60</span><span class="p">)</span> <span class="k">AS</span> <span class="n">payload</span>
+<span class="k">FROM</span> <span class="n">workqueue</span>
+<span class="k">WHERE</span> <span class="n">failedat</span> <span class="k">IS</span> <span class="k">NOT</span> <span class="k">NULL</span>
+<span class="k">ORDER</span> <span class="k">BY</span> <span class="n">failedat</span> <span class="k">DESC</span><span class="p">;</span>
+
+<span class="c1">-- Replay all dead-lettered messages of a given type</span>
+<span class="k">UPDATE</span> <span class="n">workqueue</span>
+<span class="k">SET</span> <span class="n">failedat</span> <span class="o">=</span> <span class="k">NULL</span><span class="p">,</span> <span class="n">retrycount</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">scheduledfor</span> <span class="o">=</span> <span class="k">NULL</span><span class="p">,</span>
+    <span class="n">lockeduntil</span> <span class="o">=</span> <span class="k">NULL</span><span class="p">,</span> <span class="n">locktoken</span> <span class="o">=</span> <span class="k">NULL</span>
+<span class="k">WHERE</span> <span class="n">channel</span> <span class="o">=</span> <span class="s1">'MyApp.Messages.OrderSubmitted'</span>
+  <span class="k">AND</span> <span class="n">failedat</span> <span class="k">IS</span> <span class="k">NOT</span> <span class="k">NULL</span><span class="p">;</span>
+</code></pre></div></div>
+
+    </main>
+  </div>
+</div>
+<footer>
+  <div class="wrap footer-inner">
+    <span>© TownSuite · MIT License</span>
+    <nav class="footer-links">
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/blob/main/Readme.md" target="_blank" rel="noopener">README</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/issues" target="_blank" rel="noopener">Issues</a>
+    </nav>
+  </div>
+</footer>
+
+
+</body>
+</html>

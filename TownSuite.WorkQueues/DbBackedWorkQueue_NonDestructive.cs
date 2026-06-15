@@ -1,12 +1,21 @@
 using System.Data;
 using System.Data.Common;
-using System.Reflection.Metadata.Ecma335;
-using Newtonsoft.Json;
 
 namespace TownSuite.WorkQueues;
 
-public class DbBackedWorkQueue_NonDestructive : DbBackedWorkQueue, IWorkQueue
+/// <summary>
+/// Non-destructive variant of <see cref="DbBackedWorkQueue"/>. Dequeued rows are
+/// <strong>kept</strong> in the table and stamped with <c>timeprocessedutc</c> on commit
+/// rather than deleted. Use this when you need an audit trail or the ability to reprocess rows.
+/// </summary>
+/// <remarks>
+/// Internally calls the <c>workqueue_dequeue_nondestructive</c> stored procedure.
+/// Multiple workers can safely share a channel by incrementing the <c>offset</c> parameter
+/// when a row cannot be processed.
+/// </remarks>
+public class DbBackedWorkQueue_NonDestructive : DbBackedWorkQueue
 {
+    [return: System.Diagnostics.CodeAnalysis.MaybeNull]
     public override async Task<T> Dequeue<T>(string channel, IDbConnection con, IDbTransaction txn, int offset = 0)
     {
 #if NET8_0_OR_GREATER
@@ -14,20 +23,19 @@ public class DbBackedWorkQueue_NonDestructive : DbBackedWorkQueue, IWorkQueue
 #endif
         ArgumentNullException.ThrowIfNull(con, nameof(con));
         ArgumentNullException.ThrowIfNull(txn, nameof(txn));
-        
+
         if (con is not DbConnection connection)
-        {
             throw new WorkQueuesException("con must be a DbConnection");
-        }
-        
+
         if (txn is not DbTransaction transaction)
-        {
             throw new WorkQueuesException("txn must be a DbTransaction");
-        }
-        
+
+#pragma warning disable CS8602 // [MaybeNull] — caller contract matches callee, null flow is intentional
         return await Dequeue<T>(channel, connection, transaction, offset);
+#pragma warning restore CS8602
     }
 
+    [return: System.Diagnostics.CodeAnalysis.MaybeNull]
     public override async Task<T> Dequeue<T>(string channel, DbConnection con, DbTransaction txn, int offset = 0)
     {
 #if NET8_0_OR_GREATER
@@ -35,7 +43,7 @@ public class DbBackedWorkQueue_NonDestructive : DbBackedWorkQueue, IWorkQueue
 #endif
         ArgumentNullException.ThrowIfNull(con, nameof(con));
         ArgumentNullException.ThrowIfNull(txn, nameof(txn));
-        
+
         if (con.State == ConnectionState.Closed) await con.OpenAsync();
 
         await using var command = con.CreateCommand();
@@ -60,19 +68,20 @@ public class DbBackedWorkQueue_NonDestructive : DbBackedWorkQueue, IWorkQueue
         payloadParameter.Direction = ParameterDirection.Output;
         command.Parameters.Add(payloadParameter);
 
-        await using var reader = await command.ExecuteReaderAsync();
-        string jsonPayload = payloadParameter.Value?.ToString()!;
+        // PostgreSQL CALL returns OUT parameters as a result-set row.
+        // SQL Server EXEC with OUTPUT sets the parameter value after the reader is closed.
+        // Both paths are covered: read from the reader first, then fall back to the parameter.
+        string? jsonPayload = null;
+        await using (var reader = await command.ExecuteReaderAsync())
+        {
+            if (await reader.ReadAsync() && !reader.IsDBNull(0))
+                jsonPayload = reader.GetString(0);
+        }
+        jsonPayload ??= payloadParameter.Value?.ToString();
 
         if (string.IsNullOrWhiteSpace(jsonPayload))
-        {
             return default!;
-        }
 
-        var settings = new JsonSerializerSettings
-        {
-            TypeNameHandling = TypeNameHandling.Auto
-        };
-
-        return JsonConvert.DeserializeObject<T>(jsonPayload, settings)!;
+        return LegacyJsonDeserializer.Deserialize<T>(jsonPayload)!;
     }
 }

@@ -1,0 +1,33 @@
+---
+layout: default
+---
+{% include nav.html %}
+<div class="docs-shell">
+  <div class="wrap docs-wrap">
+    <aside class="docs-sidebar">
+      <nav class="docs-nav">
+        <a class="docs-home-link{% if page.url == '/docs/' %} active{% endif %}" href="{{ '/docs/' | relative_url }}">Getting Started</a>
+        <div class="docs-nav-group">
+          <p class="docs-nav-label">Backends</p>
+          <a href="{{ '/docs/backends/postgres/' | relative_url }}"{% if page.url contains 'postgres' %} class="active"{% endif %}>PostgreSQL</a>
+          <a href="{{ '/docs/backends/sqlserver/' | relative_url }}"{% if page.url contains 'sqlserver' %} class="active"{% endif %}>SQL Server</a>
+          <a href="{{ '/docs/backends/redis/' | relative_url }}"{% if page.url contains 'redis' %} class="active"{% endif %}>Redis</a>
+          <a href="{{ '/docs/backends/sqlite/' | relative_url }}"{% if page.url contains 'sqlite' %} class="active"{% endif %}>SQLite <span class="docs-badge">local dev</span></a>
+        </div>
+        <div class="docs-nav-group">
+          <p class="docs-nav-label">Guides</p>
+          <a href="{{ '/docs/workqueue-to-bus/' | relative_url }}"{% if page.url contains 'workqueue-to-bus' %} class="active"{% endif %}>WorkQueue → Message Bus</a>
+          <a href="{{ '/docs/migrating/' | relative_url }}"{% if page.url contains 'migrating' %} class="active"{% endif %}>Migrating from v1</a>
+        </div>
+        <div class="docs-nav-group">
+          <p class="docs-nav-label">Reference</p>
+          <a href="{{ '/docs/configuration/' | relative_url }}"{% if page.url contains 'configuration' %} class="active"{% endif %}>Configuration</a>
+        </div>
+      </nav>
+    </aside>
+    <main class="docs-content">
+      {{ content }}
+    </main>
+  </div>
+</div>
+{% include footer.html %}

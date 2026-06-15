@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Migrating from v1 — TownSuite.WorkQueues — a work queue in the database you already run</title>
+<meta name="description" content="Step-by-step guide for upgrading TownSuite.WorkQueues from version 1.x to version 2.x.">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('wq-theme') || 'system';
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {
+      document.documentElement.setAttribute('data-theme', 'system');
+    }
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;650;700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/TownSuite.WorkQueues/assets/css/main.css">
+<!-- Begin Jekyll SEO tag v2.9.0 -->
+<title>Migrating from v1 — TownSuite.WorkQueues | TownSuite.WorkQueues</title>
+<meta name="generator" content="Jekyll v4.4.1" />
+<meta property="og:title" content="Migrating from v1 — TownSuite.WorkQueues" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Step-by-step guide for upgrading TownSuite.WorkQueues from version 1.x to version 2.x." />
+<meta name="twitter:description" property="og:description" content="Step-by-step guide for upgrading TownSuite.WorkQueues from version 1.x to version 2.x." />
+<link rel="canonical" href="http://localhost:4000/TownSuite.WorkQueues/docs/migrating/" />
+<meta property="og:url" content="http://localhost:4000/TownSuite.WorkQueues/docs/migrating/" />
+<meta property="og:site_name" content="TownSuite.WorkQueues" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="Migrating from v1 — TownSuite.WorkQueues" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebPage","description":"Step-by-step guide for upgrading TownSuite.WorkQueues from version 1.x to version 2.x.","headline":"Migrating from v1 — TownSuite.WorkQueues","url":"http://localhost:4000/TownSuite.WorkQueues/docs/migrating/"}</script>
+<!-- End Jekyll SEO tag -->
+
+</head>
+<body data-anim="on">
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="wordmark" href="/TownSuite.WorkQueues/">
+      <span class="wordmark-box"><img src="/TownSuite.WorkQueues/assets/logo.svg" alt="TownSuite"></span>
+      <span>TownSuite<span class="dim">.</span>WorkQueues</span>
+    </a>
+    <nav class="nav-links">
+      <a href="/TownSuite.WorkQueues/#why">Why</a>
+      <a href="/TownSuite.WorkQueues/#api">API</a>
+      <a href="/TownSuite.WorkQueues/#reliability">Reliability</a>
+      <a href="/TownSuite.WorkQueues/#backends">Backends</a>
+      <a href="/TownSuite.WorkQueues/#benchmarks">Benchmarks</a>
+      <a href="/TownSuite.WorkQueues/docs/">Docs</a>
+      <a class="nav-gh" href="https://github.com/TownSuite/TownSuite.WorkQueues" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<div class="docs-shell">
+  <div class="wrap docs-wrap">
+    <aside class="docs-sidebar">
+      <nav class="docs-nav">
+        <a class="docs-home-link" href="/TownSuite.WorkQueues/docs/">Getting Started</a>
+        <div class="docs-nav-group">
+          <p class="docs-nav-label">Backends</p>
+          <a href="/TownSuite.WorkQueues/docs/backends/postgres/">PostgreSQL</a>
+          <a href="/TownSuite.WorkQueues/docs/backends/sqlserver/">SQL Server</a>
+          <a href="/TownSuite.WorkQueues/docs/backends/redis/">Redis</a>
+          <a href="/TownSuite.WorkQueues/docs/backends/sqlite/">SQLite <span class="docs-badge">local dev</span></a>
+        </div>
+        <div class="docs-nav-group">
+          <p class="docs-nav-label">Guides</p>
+          <a href="/TownSuite.WorkQueues/docs/workqueue-to-bus/">WorkQueue → Message Bus</a>
+          <a href="/TownSuite.WorkQueues/docs/migrating/" class="active">Migrating from v1</a>
+        </div>
+        <div class="docs-nav-group">
+          <p class="docs-nav-label">Reference</p>
+          <a href="/TownSuite.WorkQueues/docs/configuration/">Configuration</a>
+        </div>
+      </nav>
+    </aside>
+    <main class="docs-content">
+      <h1 id="migrating-from-v1-to-v2">Migrating from v1 to v2</h1>
+
+<p>Version 2 is a substantial overhaul of the library. Most of the changes are additive, but there are three things that require action on upgrade: a <strong>serialization format change</strong>, <strong>schema changes</strong>, and the <strong>removal of Newtonsoft.Json</strong>.</p>
+
+<hr />
+
+<h2 id="at-a-glance">At a glance</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Area</th>
+      <th>Action required</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>NuGet packages</td>
+      <td>Add backend-specific packages; add explicit Newtonsoft.Json dep if needed</td>
+    </tr>
+    <tr>
+      <td>Serialization</td>
+      <td>No action for POCOs; drain queue if using polymorphic payloads</td>
+    </tr>
+    <tr>
+      <td>Schema</td>
+      <td>Run <code class="language-plaintext highlighter-rouge">AddPostgresMigrationHostedService()</code> or apply SQL manually</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">AllowEmptyBatches</code> option</td>
+      <td>Rename to <code class="language-plaintext highlighter-rouge">ContinuousPolling</code> (old name compiles with a warning)</td>
+    </tr>
+    <tr>
+      <td>Dead-letter queue</td>
+      <td>New — set <code class="language-plaintext highlighter-rouge">MaxRetries</code> (default <code class="language-plaintext highlighter-rouge">3</code>)</td>
+    </tr>
+    <tr>
+      <td>Everything else</td>
+      <td>Non-breaking additions — opt in at your own pace</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr />
+
+<h2 id="1-update-packages">1. Update packages</h2>
+
+<p>The core package is still <code class="language-plaintext highlighter-rouge">TownSuite.WorkQueues</code>. Backend packages are now separate:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dotnet add package TownSuite.WorkQueues
+dotnet add package TownSuite.WorkQueues.Postgres  <span class="c"># or .SqlServer, .Redis, .Sqlite</span>
+</code></pre></div></div>
+
+<p><strong>Newtonsoft.Json is no longer a transitive dependency.</strong> If your project relied on it transitively, add an explicit reference:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dotnet add package Newtonsoft.Json
+</code></pre></div></div>
+
+<hr />
+
+<h2 id="2-serialization-change">2. Serialization change</h2>
+
+<p>v2 writes payloads with <code class="language-plaintext highlighter-rouge">System.Text.Json</code>. v1 used <code class="language-plaintext highlighter-rouge">Newtonsoft.Json</code> with <code class="language-plaintext highlighter-rouge">TypeNameHandling.All</code>, which embeds <code class="language-plaintext highlighter-rouge">$type</code> metadata:</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="err">//</span><span class="w"> </span><span class="err">v</span><span class="mi">1</span><span class="w"> </span><span class="err">payload</span><span class="w">
+</span><span class="p">{</span><span class="nl">"$type"</span><span class="p">:</span><span class="s2">"MyApp.OrderSubmitted, MyApp"</span><span class="p">,</span><span class="nl">"OrderId"</span><span class="p">:</span><span class="s2">"..."</span><span class="p">,</span><span class="nl">"Customer"</span><span class="p">:</span><span class="s2">"alice"</span><span class="p">}</span><span class="w">
+
+</span><span class="err">//</span><span class="w"> </span><span class="err">v</span><span class="mi">2</span><span class="w"> </span><span class="err">payload</span><span class="w">
+</span><span class="p">{</span><span class="nl">"OrderId"</span><span class="p">:</span><span class="s2">"..."</span><span class="p">,</span><span class="nl">"Customer"</span><span class="p">:</span><span class="s2">"alice"</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p><strong>Reading old v1 payloads is handled automatically.</strong> The library detects and strips <code class="language-plaintext highlighter-rouge">$type</code> annotations on POCOs (including nested objects) and unwraps collections stored in <code class="language-plaintext highlighter-rouge">$values</code> arrays. No drain is required for the common case.</p>
+
+<p>The one scenario that still requires action is <strong>polymorphic payloads</strong> — where a derived type was stored (<code class="language-plaintext highlighter-rouge">$type</code> pointed to <code class="language-plaintext highlighter-rouge">OrderSubmittedV2</code>) but the consumer reads it as a base type (<code class="language-plaintext highlighter-rouge">OrderEvent</code>). In that case the derived-only properties are silently dropped. Options:</p>
+
+<ul>
+  <li>Drain the affected channel before deploying v2 (let all existing messages process first).</li>
+  <li>Or, after deploying, call <code class="language-plaintext highlighter-rouge">ReplayDeadLettered&lt;T&gt;()</code> if any messages land in the dead-letter queue due to deserialization errors.</li>
+</ul>
+
+<p>For all other cases — simple POCOs, records, collections — upgrade in-place without draining.</p>
+
+<hr />
+
+<h2 id="3-schema-migration">3. Schema migration</h2>
+
+<p>v2 adds three new columns and a partial index to the <code class="language-plaintext highlighter-rouge">workqueue</code> table:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Change</th>
+      <th>Detail</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">channel</code> column widened</td>
+      <td><code class="language-plaintext highlighter-rouge">VARCHAR(50)</code> → <code class="language-plaintext highlighter-rouge">VARCHAR(500)</code></td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">retrycount</code> column added</td>
+      <td><code class="language-plaintext highlighter-rouge">INT NOT NULL DEFAULT 0</code></td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">failedat</code> column added</td>
+      <td><code class="language-plaintext highlighter-rouge">TIMESTAMP NULL</code> (Postgres) / <code class="language-plaintext highlighter-rouge">DATETIME NULL</code> (SQL Server)</td>
+    </tr>
+    <tr>
+      <td>Partial index added</td>
+      <td><code class="language-plaintext highlighter-rouge">(channel, timecreatedutc) WHERE timeprocessedutc IS NULL AND failedat IS NULL</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<p>v2.4 adds two more columns required for scheduled delivery and message identity:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Change</th>
+      <th>Detail</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">scheduledfor</code> column added</td>
+      <td><code class="language-plaintext highlighter-rouge">TIMESTAMP NULL</code> / <code class="language-plaintext highlighter-rouge">DATETIME NULL</code></td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">messageid</code> column added</td>
+      <td><code class="language-plaintext highlighter-rouge">UUID NOT NULL DEFAULT gen_random_uuid()</code> / <code class="language-plaintext highlighter-rouge">UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID()</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 id="automatic-migration-recommended">Automatic migration (recommended)</h3>
+
+<p>Register the migration hosted service and all DDL is applied on startup. Every statement is idempotent and safe to run against a live database:</p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// PostgreSQL</span>
+<span class="n">builder</span><span class="p">.</span><span class="n">Services</span><span class="p">.</span><span class="nf">AddPostgresMigrationHostedService</span><span class="p">();</span>
+
+<span class="c1">// SQL Server</span>
+<span class="n">builder</span><span class="p">.</span><span class="n">Services</span><span class="p">.</span><span class="nf">AddSqlServerMigrationHostedService</span><span class="p">();</span>
+</code></pre></div></div>
+
+<h3 id="manual-migration-postgresql">Manual migration (PostgreSQL)</h3>
+
+<p>If you manage schema separately, run these statements in order:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- Widen channel column</span>
+<span class="k">ALTER</span> <span class="k">TABLE</span> <span class="n">transport</span><span class="p">.</span><span class="n">workqueue</span>
+    <span class="k">ALTER</span> <span class="k">COLUMN</span> <span class="n">channel</span> <span class="k">TYPE</span> <span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">500</span><span class="p">);</span>
+
+<span class="c1">-- Add retrycount</span>
+<span class="k">ALTER</span> <span class="k">TABLE</span> <span class="n">transport</span><span class="p">.</span><span class="n">workqueue</span>
+    <span class="k">ADD</span> <span class="k">COLUMN</span> <span class="n">IF</span> <span class="k">NOT</span> <span class="k">EXISTS</span> <span class="n">retrycount</span> <span class="nb">INT</span> <span class="k">NOT</span> <span class="k">NULL</span> <span class="k">DEFAULT</span> <span class="mi">0</span><span class="p">;</span>
+
+<span class="c1">-- Add failedat</span>
+<span class="k">ALTER</span> <span class="k">TABLE</span> <span class="n">transport</span><span class="p">.</span><span class="n">workqueue</span>
+    <span class="k">ADD</span> <span class="k">COLUMN</span> <span class="n">IF</span> <span class="k">NOT</span> <span class="k">EXISTS</span> <span class="n">failedat</span> <span class="nb">TIMESTAMP</span> <span class="k">NULL</span><span class="p">;</span>
+
+<span class="c1">-- Add partial index (v2.0)</span>
+<span class="k">CREATE</span> <span class="k">INDEX</span> <span class="n">IF</span> <span class="k">NOT</span> <span class="k">EXISTS</span> <span class="n">ix_workqueue_channel_unprocessed</span>
+    <span class="k">ON</span> <span class="n">transport</span><span class="p">.</span><span class="n">workqueue</span> <span class="p">(</span><span class="n">channel</span><span class="p">,</span> <span class="n">timecreatedutc</span><span class="p">)</span>
+    <span class="k">WHERE</span> <span class="n">timeprocessedutc</span> <span class="k">IS</span> <span class="k">NULL</span> <span class="k">AND</span> <span class="n">failedat</span> <span class="k">IS</span> <span class="k">NULL</span><span class="p">;</span>
+
+<span class="c1">-- Add scheduledfor (v2.4)</span>
+<span class="k">ALTER</span> <span class="k">TABLE</span> <span class="n">transport</span><span class="p">.</span><span class="n">workqueue</span>
+    <span class="k">ADD</span> <span class="k">COLUMN</span> <span class="n">IF</span> <span class="k">NOT</span> <span class="k">EXISTS</span> <span class="n">scheduledfor</span> <span class="nb">TIMESTAMP</span> <span class="k">NULL</span><span class="p">;</span>
+
+<span class="c1">-- Add messageid (v2.4)</span>
+<span class="k">ALTER</span> <span class="k">TABLE</span> <span class="n">transport</span><span class="p">.</span><span class="n">workqueue</span>
+    <span class="k">ADD</span> <span class="k">COLUMN</span> <span class="n">IF</span> <span class="k">NOT</span> <span class="k">EXISTS</span> <span class="n">messageid</span> <span class="n">UUID</span> <span class="k">NOT</span> <span class="k">NULL</span> <span class="k">DEFAULT</span> <span class="n">gen_random_uuid</span><span class="p">();</span>
+</code></pre></div></div>
+
+<h3 id="manual-migration-sql-server">Manual migration (SQL Server)</h3>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- Widen channel column</span>
+<span class="k">ALTER</span> <span class="k">TABLE</span> <span class="p">[</span><span class="n">dbo</span><span class="p">].[</span><span class="n">workqueue</span><span class="p">]</span>
+    <span class="k">ALTER</span> <span class="k">COLUMN</span> <span class="p">[</span><span class="n">channel</span><span class="p">]</span> <span class="n">NVARCHAR</span><span class="p">(</span><span class="mi">500</span><span class="p">)</span> <span class="k">NOT</span> <span class="k">NULL</span><span class="p">;</span>
+
+<span class="c1">-- Add retrycount</span>
+<span class="n">IF</span> <span class="k">NOT</span> <span class="k">EXISTS</span> <span class="p">(</span><span class="k">SELECT</span> <span class="mi">1</span> <span class="k">FROM</span> <span class="n">sys</span><span class="p">.</span><span class="n">columns</span>
+    <span class="k">WHERE</span> <span class="n">object_id</span> <span class="o">=</span> <span class="n">OBJECT_ID</span><span class="p">(</span><span class="s1">'[dbo].[workqueue]'</span><span class="p">)</span> <span class="k">AND</span> <span class="n">name</span> <span class="o">=</span> <span class="s1">'retrycount'</span><span class="p">)</span>
+    <span class="k">ALTER</span> <span class="k">TABLE</span> <span class="p">[</span><span class="n">dbo</span><span class="p">].[</span><span class="n">workqueue</span><span class="p">]</span>
+        <span class="k">ADD</span> <span class="p">[</span><span class="n">retrycount</span><span class="p">]</span> <span class="nb">INT</span> <span class="k">NOT</span> <span class="k">NULL</span> <span class="k">DEFAULT</span> <span class="mi">0</span><span class="p">;</span>
+
+<span class="c1">-- Add failedat</span>
+<span class="n">IF</span> <span class="k">NOT</span> <span class="k">EXISTS</span> <span class="p">(</span><span class="k">SELECT</span> <span class="mi">1</span> <span class="k">FROM</span> <span class="n">sys</span><span class="p">.</span><span class="n">columns</span>
+    <span class="k">WHERE</span> <span class="n">object_id</span> <span class="o">=</span> <span class="n">OBJECT_ID</span><span class="p">(</span><span class="s1">'[dbo].[workqueue]'</span><span class="p">)</span> <span class="k">AND</span> <span class="n">name</span> <span class="o">=</span> <span class="s1">'failedat'</span><span class="p">)</span>
+    <span class="k">ALTER</span> <span class="k">TABLE</span> <span class="p">[</span><span class="n">dbo</span><span class="p">].[</span><span class="n">workqueue</span><span class="p">]</span>
+        <span class="k">ADD</span> <span class="p">[</span><span class="n">failedat</span><span class="p">]</span> <span class="nb">DATETIME</span> <span class="k">NULL</span><span class="p">;</span>
+
+<span class="c1">-- Add partial index (v2.0)</span>
+<span class="n">IF</span> <span class="k">NOT</span> <span class="k">EXISTS</span> <span class="p">(</span><span class="k">SELECT</span> <span class="mi">1</span> <span class="k">FROM</span> <span class="n">sys</span><span class="p">.</span><span class="n">indexes</span>
+    <span class="k">WHERE</span> <span class="n">name</span> <span class="o">=</span> <span class="s1">'IX_WorkQueue_Channel_Unprocessed'</span>
+    <span class="k">AND</span> <span class="n">object_id</span> <span class="o">=</span> <span class="n">OBJECT_ID</span><span class="p">(</span><span class="s1">'[dbo].[workqueue]'</span><span class="p">))</span>
+    <span class="k">CREATE</span> <span class="n">NONCLUSTERED</span> <span class="k">INDEX</span> <span class="p">[</span><span class="n">IX_WorkQueue_Channel_Unprocessed</span><span class="p">]</span>
+        <span class="k">ON</span> <span class="p">[</span><span class="n">dbo</span><span class="p">].[</span><span class="n">workqueue</span><span class="p">]</span> <span class="p">([</span><span class="n">channel</span><span class="p">]</span> <span class="k">ASC</span><span class="p">,</span> <span class="p">[</span><span class="n">timecreatedutc</span><span class="p">]</span> <span class="k">ASC</span><span class="p">)</span>
+        <span class="k">WHERE</span> <span class="p">[</span><span class="n">timeprocessedutc</span><span class="p">]</span> <span class="k">IS</span> <span class="k">NULL</span> <span class="k">AND</span> <span class="p">[</span><span class="n">failedat</span><span class="p">]</span> <span class="k">IS</span> <span class="k">NULL</span><span class="p">;</span>
+
+<span class="c1">-- Add scheduledfor (v2.4)</span>
+<span class="n">IF</span> <span class="k">NOT</span> <span class="k">EXISTS</span> <span class="p">(</span><span class="k">SELECT</span> <span class="mi">1</span> <span class="k">FROM</span> <span class="n">sys</span><span class="p">.</span><span class="n">columns</span>
+    <span class="k">WHERE</span> <span class="n">object_id</span> <span class="o">=</span> <span class="n">OBJECT_ID</span><span class="p">(</span><span class="s1">'[dbo].[workqueue]'</span><span class="p">)</span> <span class="k">AND</span> <span class="n">name</span> <span class="o">=</span> <span class="s1">'scheduledfor'</span><span class="p">)</span>
+    <span class="k">ALTER</span> <span class="k">TABLE</span> <span class="p">[</span><span class="n">dbo</span><span class="p">].[</span><span class="n">workqueue</span><span class="p">]</span>
+        <span class="k">ADD</span> <span class="p">[</span><span class="n">scheduledfor</span><span class="p">]</span> <span class="nb">DATETIME</span> <span class="k">NULL</span><span class="p">;</span>
+
+<span class="c1">-- Add messageid (v2.4)</span>
+<span class="n">IF</span> <span class="k">NOT</span> <span class="k">EXISTS</span> <span class="p">(</span><span class="k">SELECT</span> <span class="mi">1</span> <span class="k">FROM</span> <span class="n">sys</span><span class="p">.</span><span class="n">columns</span>
+    <span class="k">WHERE</span> <span class="n">object_id</span> <span class="o">=</span> <span class="n">OBJECT_ID</span><span class="p">(</span><span class="s1">'[dbo].[workqueue]'</span><span class="p">)</span> <span class="k">AND</span> <span class="n">name</span> <span class="o">=</span> <span class="s1">'messageid'</span><span class="p">)</span>
+    <span class="k">ALTER</span> <span class="k">TABLE</span> <span class="p">[</span><span class="n">dbo</span><span class="p">].[</span><span class="n">workqueue</span><span class="p">]</span>
+        <span class="k">ADD</span> <span class="p">[</span><span class="n">messageid</span><span class="p">]</span> <span class="n">UNIQUEIDENTIFIER</span> <span class="k">NOT</span> <span class="k">NULL</span>
+            <span class="k">CONSTRAINT</span> <span class="p">[</span><span class="n">DEFAULT_WorkQueue_MessageId</span><span class="p">]</span> <span class="k">DEFAULT</span> <span class="p">(</span><span class="n">NEWID</span><span class="p">())</span> <span class="k">WITH</span> <span class="k">VALUES</span><span class="p">;</span>
+</code></pre></div></div>
+
+<hr />
+
+<h2 id="4-api-changes">4. API changes</h2>
+
+<h3 id="allowemptybatches-renamed-to-continuouspolling"><code class="language-plaintext highlighter-rouge">AllowEmptyBatches</code> renamed to <code class="language-plaintext highlighter-rouge">ContinuousPolling</code></h3>
+
+<p>The property was renamed to better describe its behaviour. The old name still compiles but emits an <code class="language-plaintext highlighter-rouge">[Obsolete]</code> warning:</p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// v1</span>
+<span class="n">options</span><span class="p">.</span><span class="n">AllowEmptyBatches</span> <span class="p">=</span> <span class="k">true</span><span class="p">;</span>
+
+<span class="c1">// v2</span>
+<span class="n">options</span><span class="p">.</span><span class="n">ContinuousPolling</span> <span class="p">=</span> <span class="k">true</span><span class="p">;</span>
+</code></pre></div></div>
+
+<h3 id="dead-letter-queue-is-now-automatic">Dead-letter queue is now automatic</h3>
+
+<p>v2 introduces <code class="language-plaintext highlighter-rouge">MaxRetries</code> (default <code class="language-plaintext highlighter-rouge">3</code>). If a consumer throws on every attempt, the message is automatically dead-lettered after three tries — <code class="language-plaintext highlighter-rouge">failedat</code> is set and polling skips it permanently. In v1 there was no retry limit and failed messages would retry forever.</p>
+
+<p>If you relied on that unlimited-retry behaviour, raise <code class="language-plaintext highlighter-rouge">MaxRetries</code> to a large number:</p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">options</span><span class="p">.</span><span class="n">MaxRetries</span> <span class="p">=</span> <span class="kt">int</span><span class="p">.</span><span class="n">MaxValue</span><span class="p">;</span>  <span class="c1">// effectively unlimited, v1 behaviour</span>
+</code></pre></div></div>
+
+<p>To inspect and replay dead-lettered messages:</p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// Programmatic replay</span>
+<span class="kt">int</span> <span class="n">replayed</span> <span class="p">=</span> <span class="k">await</span> <span class="n">bus</span><span class="p">.</span><span class="n">ReplayDeadLettered</span><span class="p">&lt;</span><span class="n">OrderSubmitted</span><span class="p">&gt;();</span>
+
+<span class="c1">// Or via SQL (PostgreSQL)</span>
+<span class="n">UPDATE</span> <span class="n">transport</span><span class="p">.</span><span class="n">workqueue</span>
+<span class="n">SET</span> <span class="n">failedat</span> <span class="p">=</span> <span class="n">NULL</span><span class="p">,</span> <span class="n">retrycount</span> <span class="p">=</span> <span class="m">0</span>
+<span class="n">WHERE</span> <span class="n">failedat</span> <span class="n">IS</span> <span class="n">NOT</span> <span class="n">NULL</span>
+  <span class="n">AND</span> <span class="n">channel</span> <span class="p">=</span> <span class="err">'</span><span class="n">MyApp</span><span class="p">.</span><span class="n">OrderSubmitted</span><span class="err">'</span><span class="p">;</span>
+</code></pre></div></div>
+
+<h3 id="security-typenamehandlingall-removed">Security: <code class="language-plaintext highlighter-rouge">TypeNameHandling.All</code> removed</h3>
+
+<p>v1 used <code class="language-plaintext highlighter-rouge">Newtonsoft.Json</code> with <code class="language-plaintext highlighter-rouge">TypeNameHandling.All</code>, which allows arbitrary type instantiation from attacker-controlled JSON — a known deserialization vulnerability. v2 uses <code class="language-plaintext highlighter-rouge">System.Text.Json</code> with no type metadata. No action needed; this is strictly a security improvement.</p>
+
+<hr />
+
+<h2 id="5-new-features-to-adopt">5. New features to adopt</h2>
+
+<p>These are all additive and opt-in. There is no pressure to adopt them immediately.</p>
+
+<p><strong><code class="language-plaintext highlighter-rouge">ConsumeContext&lt;T&gt;</code> now carries metadata</strong> (v2.3 / v2.4):</p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">public</span> <span class="k">async</span> <span class="n">Task</span> <span class="nf">Consume</span><span class="p">(</span><span class="n">ConsumeContext</span><span class="p">&lt;</span><span class="n">OrderSubmitted</span><span class="p">&gt;</span> <span class="n">ctx</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="c1">// ctx.CancellationToken — observe graceful shutdown</span>
+    <span class="c1">// ctx.MessageId         — stable UUID; use for idempotency checks</span>
+    <span class="c1">// ctx.SentTime          — when Publish() was called</span>
+    <span class="k">if</span> <span class="p">(</span><span class="k">await</span> <span class="n">_idempotency</span><span class="p">.</span><span class="nf">IsProcessed</span><span class="p">(</span><span class="n">ctx</span><span class="p">.</span><span class="n">MessageId</span><span class="p">))</span> <span class="k">return</span><span class="p">;</span>
+    <span class="k">await</span> <span class="nf">ProcessOrder</span><span class="p">(</span><span class="n">ctx</span><span class="p">.</span><span class="n">Message</span><span class="p">,</span> <span class="n">ctx</span><span class="p">.</span><span class="n">CancellationToken</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p><strong>Scoped consumers</strong> — resolved from a fresh <code class="language-plaintext highlighter-rouge">IServiceScope</code> per message (v2.4):</p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">services</span><span class="p">.</span><span class="n">AddScoped</span><span class="p">&lt;</span><span class="n">OrderConsumer</span><span class="p">&gt;();</span>
+<span class="n">services</span><span class="p">.</span><span class="nf">AddPostgresMessageBus</span><span class="p">((</span><span class="n">sp</span><span class="p">,</span> <span class="n">bus</span><span class="p">)</span> <span class="p">=&gt;</span>
+<span class="p">{</span>
+    <span class="n">bus</span><span class="p">.</span><span class="n">Subscribe</span><span class="p">&lt;</span><span class="n">OrderSubmitted</span><span class="p">,</span> <span class="n">OrderConsumer</span><span class="p">&gt;();</span>
+<span class="p">});</span>
+</code></pre></div></div>
+
+<p><strong>Scheduled delivery</strong> (v2.4):</p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">await</span> <span class="n">bus</span><span class="p">.</span><span class="nf">Publish</span><span class="p">(</span><span class="k">new</span> <span class="n">ReminderEmail</span> <span class="p">{</span> <span class="n">UserId</span> <span class="p">=</span> <span class="n">userId</span> <span class="p">},</span>
+    <span class="n">deliverAfter</span><span class="p">:</span> <span class="n">DateTimeOffset</span><span class="p">.</span><span class="n">UtcNow</span><span class="p">.</span><span class="nf">AddHours</span><span class="p">(</span><span class="m">2</span><span class="p">));</span>
+</code></pre></div></div>
+
+<p><strong>Fault consumers</strong> — notified when a message is dead-lettered (v2.4):</p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">bus</span><span class="p">.</span><span class="n">SubscribeFault</span><span class="p">&lt;</span><span class="n">OrderSubmitted</span><span class="p">&gt;(</span><span class="k">new</span> <span class="nf">OrderAlertConsumer</span><span class="p">());</span>
+</code></pre></div></div>
+
+<p><strong><code class="language-plaintext highlighter-rouge">IsPolling</code> health check</strong> (v2.3):</p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">builder</span><span class="p">.</span><span class="n">Services</span><span class="p">.</span><span class="nf">AddHealthChecks</span><span class="p">()</span>
+    <span class="p">.</span><span class="nf">AddCheck</span><span class="p">(</span><span class="s">"message-bus"</span><span class="p">,</span> <span class="p">()</span> <span class="p">=&gt;</span>
+        <span class="n">sp</span><span class="p">.</span><span class="n">GetRequiredService</span><span class="p">&lt;</span><span class="n">IMessageBus</span><span class="p">&gt;().</span><span class="n">IsPolling</span>
+            <span class="p">?</span> <span class="n">HealthCheckResult</span><span class="p">.</span><span class="nf">Healthy</span><span class="p">()</span>
+            <span class="p">:</span> <span class="n">HealthCheckResult</span><span class="p">.</span><span class="nf">Unhealthy</span><span class="p">(</span><span class="s">"Bus polling loop has stopped"</span><span class="p">));</span>
+</code></pre></div></div>
+
+<p><strong>Retry delay / backoff</strong> (v2.4):</p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">options</span><span class="p">.</span><span class="n">RetryDelay</span> <span class="p">=</span> <span class="n">TimeSpan</span><span class="p">.</span><span class="nf">FromSeconds</span><span class="p">(</span><span class="m">30</span><span class="p">);</span>  <span class="c1">// hold failed messages 30 s before retry</span>
+</code></pre></div></div>
+
+    </main>
+  </div>
+</div>
+<footer>
+  <div class="wrap footer-inner">
+    <span>© TownSuite · MIT License</span>
+    <nav class="footer-links">
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/blob/main/Readme.md" target="_blank" rel="noopener">README</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/issues" target="_blank" rel="noopener">Issues</a>
+    </nav>
+  </div>
+</footer>
+
+
+</body>
+</html>

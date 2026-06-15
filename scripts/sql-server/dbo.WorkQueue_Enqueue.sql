@@ -5,7 +5,7 @@ GO
 
 CREATE PROCEDURE [dbo].[WorkQueue_Enqueue]
     (
-    @p_channel nvarchar(50),
+    @p_channel nvarchar(500),
     @p_payload nvarchar(max)
 )
 AS

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Redis Backend — TownSuite.WorkQueues — a work queue in the database you already run</title>
+<meta name="description" content="Set up the Redis Streams-backed message bus for in-memory work queues.">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('wq-theme') || 'system';
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {
+      document.documentElement.setAttribute('data-theme', 'system');
+    }
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;650;700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/TownSuite.WorkQueues/assets/css/main.css">
+<!-- Begin Jekyll SEO tag v2.9.0 -->
+<title>Redis Backend — TownSuite.WorkQueues | TownSuite.WorkQueues</title>
+<meta name="generator" content="Jekyll v4.4.1" />
+<meta property="og:title" content="Redis Backend — TownSuite.WorkQueues" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Set up the Redis Streams-backed message bus for in-memory work queues." />
+<meta name="twitter:description" property="og:description" content="Set up the Redis Streams-backed message bus for in-memory work queues." />
+<link rel="canonical" href="http://localhost:4000/TownSuite.WorkQueues/docs/backends/redis/" />
+<meta property="og:url" content="http://localhost:4000/TownSuite.WorkQueues/docs/backends/redis/" />
+<meta property="og:site_name" content="TownSuite.WorkQueues" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="Redis Backend — TownSuite.WorkQueues" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebPage","description":"Set up the Redis Streams-backed message bus for in-memory work queues.","headline":"Redis Backend — TownSuite.WorkQueues","url":"http://localhost:4000/TownSuite.WorkQueues/docs/backends/redis/"}</script>
+<!-- End Jekyll SEO tag -->
+
+</head>
+<body data-anim="on">
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="wordmark" href="/TownSuite.WorkQueues/">
+      <span class="wordmark-box"><img src="/TownSuite.WorkQueues/assets/logo.svg" alt="TownSuite"></span>
+      <span>TownSuite<span class="dim">.</span>WorkQueues</span>
+    </a>
+    <nav class="nav-links">
+      <a href="/TownSuite.WorkQueues/#why">Why</a>
+      <a href="/TownSuite.WorkQueues/#api">API</a>
+      <a href="/TownSuite.WorkQueues/#reliability">Reliability</a>
+      <a href="/TownSuite.WorkQueues/#backends">Backends</a>
+      <a href="/TownSuite.WorkQueues/#benchmarks">Benchmarks</a>
+      <a href="/TownSuite.WorkQueues/docs/">Docs</a>
+      <a class="nav-gh" href="https://github.com/TownSuite/TownSuite.WorkQueues" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<div class="docs-shell">
+  <div class="wrap docs-wrap">
+    <aside class="docs-sidebar">
+      <nav class="docs-nav">
+        <a class="docs-home-link" href="/TownSuite.WorkQueues/docs/">Getting Started</a>
+        <div class="docs-nav-group">
+          <p class="docs-nav-label">Backends</p>
+          <a href="/TownSuite.WorkQueues/docs/backends/postgres/">PostgreSQL</a>
+          <a href="/TownSuite.WorkQueues/docs/backends/sqlserver/">SQL Server</a>
+          <a href="/TownSuite.WorkQueues/docs/backends/redis/" class="active">Redis</a>
+          <a href="/TownSuite.WorkQueues/docs/backends/sqlite/">SQLite <span class="docs-badge">local dev</span></a>
+        </div>
+        <div class="docs-nav-group">
+          <p class="docs-nav-label">Guides</p>
+          <a href="/TownSuite.WorkQueues/docs/workqueue-to-bus/">WorkQueue → Message Bus</a>
+          <a href="/TownSuite.WorkQueues/docs/migrating/">Migrating from v1</a>
+        </div>
+        <div class="docs-nav-group">
+          <p class="docs-nav-label">Reference</p>
+          <a href="/TownSuite.WorkQueues/docs/configuration/">Configuration</a>
+        </div>
+      </nav>
+    </aside>
+    <main class="docs-content">
+      <h1 id="redis-backend">Redis Backend</h1>
+
+<p>The Redis backend uses <a href="https://redis.io/docs/data-types/streams/">Redis Streams</a> with consumer groups, which provide at-least-once delivery and automatic pending-entry reclaim when a consumer goes away.</p>
+
+<div class="callout">
+<strong>Durability note.</strong> Redis is in-memory by default. Without RDB or AOF persistence enabled, messages are lost if Redis restarts. For durable work queues, use the PostgreSQL or SQL Server backend.
+</div>
+
+<h2 id="install">Install</h2>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dotnet add package TownSuite.WorkQueues.Redis
+</code></pre></div></div>
+
+<p>No SQL scripts or migration service required.</p>
+
+<h2 id="register-the-bus">Register the bus</h2>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">builder</span><span class="p">.</span><span class="n">Services</span><span class="p">.</span><span class="nf">AddSingleton</span><span class="p">(</span><span class="k">new</span> <span class="n">RedisOptions</span>
+<span class="p">{</span>
+    <span class="n">ConnectionString</span> <span class="p">=</span> <span class="s">"localhost:6379"</span><span class="p">,</span>
+    <span class="n">KeyPrefix</span> <span class="p">=</span> <span class="s">"workqueue"</span><span class="p">,</span>
+    <span class="n">ConsumerGroup</span> <span class="p">=</span> <span class="s">"default"</span>
+<span class="p">});</span>
+
+<span class="n">builder</span><span class="p">.</span><span class="n">Services</span><span class="p">.</span><span class="nf">AddRedisMessageBus</span><span class="p">((</span><span class="n">sp</span><span class="p">,</span> <span class="n">bus</span><span class="p">)</span> <span class="p">=&gt;</span>
+<span class="p">{</span>
+    <span class="n">bus</span><span class="p">.</span><span class="nf">Subscribe</span><span class="p">(</span><span class="k">new</span> <span class="nf">OrderConsumer</span><span class="p">());</span>
+    <span class="c1">// or DI-scoped:</span>
+    <span class="n">bus</span><span class="p">.</span><span class="n">Subscribe</span><span class="p">&lt;</span><span class="n">OrderSubmitted</span><span class="p">,</span> <span class="n">OrderConsumer</span><span class="p">&gt;();</span>
+<span class="p">});</span>
+</code></pre></div></div>
+
+<h2 id="options-reference">Options reference</h2>
+
+<p>See <a href="/TownSuite.WorkQueues/docs/configuration/#redis--redisoptions"><code class="language-plaintext highlighter-rouge">RedisOptions</code></a> for the full property table. Common values:</p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">new</span> <span class="n">RedisOptions</span>
+<span class="p">{</span>
+    <span class="n">ConnectionString</span> <span class="p">=</span> <span class="s">"localhost:6379,password=secret"</span><span class="p">,</span>
+    <span class="n">KeyPrefix</span> <span class="p">=</span> <span class="s">"myapp:workqueue"</span><span class="p">,</span>   <span class="c1">// namespace all keys under your app prefix</span>
+    <span class="n">ConsumerGroup</span> <span class="p">=</span> <span class="s">"workers"</span><span class="p">,</span>
+    <span class="n">ConsumerName</span> <span class="p">=</span> <span class="s">"worker-1"</span><span class="p">,</span>       <span class="c1">// override default {MachineName}-{ProcessId}</span>
+    <span class="n">ReclaimIdleTime</span> <span class="p">=</span> <span class="n">TimeSpan</span><span class="p">.</span><span class="nf">FromMinutes</span><span class="p">(</span><span class="m">2</span><span class="p">),</span>
+    <span class="n">MaxBatchSize</span> <span class="p">=</span> <span class="m">100</span><span class="p">,</span>
+    <span class="n">MaxWaitTime</span> <span class="p">=</span> <span class="n">TimeSpan</span><span class="p">.</span><span class="nf">FromSeconds</span><span class="p">(</span><span class="m">5</span><span class="p">),</span>
+    <span class="n">MaxRetries</span> <span class="p">=</span> <span class="m">3</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h2 id="how-claiming-works">How claiming works</h2>
+
+<p>The bus uses <code class="language-plaintext highlighter-rouge">XREADGROUP</code> to read pending entries from a Redis Stream. Each consumer has a distinct <code class="language-plaintext highlighter-rouge">ConsumerName</code> so that multiple processes on the same host maintain separate pending-entry lists and do not reclaim each other’s in-flight messages.</p>
+
+<p>When a consumer goes offline without acknowledging its messages, those entries become idle. The bus periodically calls <code class="language-plaintext highlighter-rouge">XAUTOCLAIM</code> to transfer entries idle longer than <code class="language-plaintext highlighter-rouge">ReclaimIdleTime</code> to the current consumer for redelivery.</p>
+
+<p>Messages are acknowledged with <code class="language-plaintext highlighter-rouge">XACK</code> after successful processing. A failed message increments its retry count and is requeued; after <code class="language-plaintext highlighter-rouge">MaxRetries</code> attempts it is dead-lettered (moved to a <code class="language-plaintext highlighter-rouge">{KeyPrefix}:deadletter</code> stream).</p>
+
+    </main>
+  </div>
+</div>
+<footer>
+  <div class="wrap footer-inner">
+    <span>© TownSuite · MIT License</span>
+    <nav class="footer-links">
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/blob/main/Readme.md" target="_blank" rel="noopener">README</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/issues" target="_blank" rel="noopener">Issues</a>
+    </nav>
+  </div>
+</footer>
+
+
+</body>
+</html>

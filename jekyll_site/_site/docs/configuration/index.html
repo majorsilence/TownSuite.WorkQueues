@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Configuration — TownSuite.WorkQueues — a work queue in the database you already run</title>
+<meta name="description" content="Reference for BatchOptions and all per-backend configuration properties.">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('wq-theme') || 'system';
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {
+      document.documentElement.setAttribute('data-theme', 'system');
+    }
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;650;700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/TownSuite.WorkQueues/assets/css/main.css">
+<!-- Begin Jekyll SEO tag v2.9.0 -->
+<title>Configuration — TownSuite.WorkQueues | TownSuite.WorkQueues</title>
+<meta name="generator" content="Jekyll v4.4.1" />
+<meta property="og:title" content="Configuration — TownSuite.WorkQueues" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Reference for BatchOptions and all per-backend configuration properties." />
+<meta name="twitter:description" property="og:description" content="Reference for BatchOptions and all per-backend configuration properties." />
+<link rel="canonical" href="http://localhost:4000/TownSuite.WorkQueues/docs/configuration/" />
+<meta property="og:url" content="http://localhost:4000/TownSuite.WorkQueues/docs/configuration/" />
+<meta property="og:site_name" content="TownSuite.WorkQueues" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="Configuration — TownSuite.WorkQueues" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebPage","description":"Reference for BatchOptions and all per-backend configuration properties.","headline":"Configuration — TownSuite.WorkQueues","url":"http://localhost:4000/TownSuite.WorkQueues/docs/configuration/"}</script>
+<!-- End Jekyll SEO tag -->
+
+</head>
+<body data-anim="on">
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="wordmark" href="/TownSuite.WorkQueues/">
+      <span class="wordmark-box"><img src="/TownSuite.WorkQueues/assets/logo.svg" alt="TownSuite"></span>
+      <span>TownSuite<span class="dim">.</span>WorkQueues</span>
+    </a>
+    <nav class="nav-links">
+      <a href="/TownSuite.WorkQueues/#why">Why</a>
+      <a href="/TownSuite.WorkQueues/#api">API</a>
+      <a href="/TownSuite.WorkQueues/#reliability">Reliability</a>
+      <a href="/TownSuite.WorkQueues/#backends">Backends</a>
+      <a href="/TownSuite.WorkQueues/#benchmarks">Benchmarks</a>
+      <a href="/TownSuite.WorkQueues/docs/">Docs</a>
+      <a class="nav-gh" href="https://github.com/TownSuite/TownSuite.WorkQueues" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<div class="docs-shell">
+  <div class="wrap docs-wrap">
+    <aside class="docs-sidebar">
+      <nav class="docs-nav">
+        <a class="docs-home-link" href="/TownSuite.WorkQueues/docs/">Getting Started</a>
+        <div class="docs-nav-group">
+          <p class="docs-nav-label">Backends</p>
+          <a href="/TownSuite.WorkQueues/docs/backends/postgres/">PostgreSQL</a>
+          <a href="/TownSuite.WorkQueues/docs/backends/sqlserver/">SQL Server</a>
+          <a href="/TownSuite.WorkQueues/docs/backends/redis/">Redis</a>
+          <a href="/TownSuite.WorkQueues/docs/backends/sqlite/">SQLite <span class="docs-badge">local dev</span></a>
+        </div>
+        <div class="docs-nav-group">
+          <p class="docs-nav-label">Guides</p>
+          <a href="/TownSuite.WorkQueues/docs/workqueue-to-bus/">WorkQueue → Message Bus</a>
+          <a href="/TownSuite.WorkQueues/docs/migrating/">Migrating from v1</a>
+        </div>
+        <div class="docs-nav-group">
+          <p class="docs-nav-label">Reference</p>
+          <a href="/TownSuite.WorkQueues/docs/configuration/" class="active">Configuration</a>
+        </div>
+      </nav>
+    </aside>
+    <main class="docs-content">
+      <h1 id="configuration">Configuration</h1>
+
+<p>All backend options classes inherit from <code class="language-plaintext highlighter-rouge">BatchOptions</code>, which controls polling and retry behavior. Each backend then adds its own connection and schema properties.</p>
+
+<h2 id="batchoptions-shared">BatchOptions (shared)</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Property</th>
+      <th>Type</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">MaxBatchSize</code></td>
+      <td><code class="language-plaintext highlighter-rouge">int</code></td>
+      <td><code class="language-plaintext highlighter-rouge">100</code></td>
+      <td>Maximum messages to claim and process per poll cycle.</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">MaxWaitTime</code></td>
+      <td><code class="language-plaintext highlighter-rouge">TimeSpan</code></td>
+      <td><code class="language-plaintext highlighter-rouge">5s</code></td>
+      <td>How long to wait between poll cycles when no messages are found.</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">ContinuousPolling</code></td>
+      <td><code class="language-plaintext highlighter-rouge">bool</code></td>
+      <td><code class="language-plaintext highlighter-rouge">false</code></td>
+      <td>When <code class="language-plaintext highlighter-rouge">true</code>, the bus polls again immediately after each batch instead of waiting <code class="language-plaintext highlighter-rouge">MaxWaitTime</code>. Useful for high-throughput scenarios.</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">MaxRetries</code></td>
+      <td><code class="language-plaintext highlighter-rouge">int</code></td>
+      <td><code class="language-plaintext highlighter-rouge">3</code></td>
+      <td>Maximum delivery attempts before a message is dead-lettered.</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">RetryDelay</code></td>
+      <td><code class="language-plaintext highlighter-rouge">TimeSpan</code></td>
+      <td><code class="language-plaintext highlighter-rouge">0</code></td>
+      <td>Time to hold a failed message before making it eligible for the next retry attempt.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="postgresql--sqltransportoptions">PostgreSQL — <code class="language-plaintext highlighter-rouge">SqlTransportOptions</code></h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Property</th>
+      <th>Type</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">ConnectionString</code></td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td>—</td>
+      <td>Npgsql connection string used for message transport.</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">Schema</code></td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td><code class="language-plaintext highlighter-rouge">"transport"</code></td>
+      <td>PostgreSQL schema that contains the <code class="language-plaintext highlighter-rouge">workqueue</code> table.</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">AdminConnectionString</code></td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td><em>(same as ConnectionString)</em></td>
+      <td>Connection string for DDL migrations. May require broader privileges than the runtime connection.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="sql-server--sqlservertransportoptions">SQL Server — <code class="language-plaintext highlighter-rouge">SqlServerTransportOptions</code></h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Property</th>
+      <th>Type</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">ConnectionString</code></td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td>—</td>
+      <td>Microsoft.Data.SqlClient connection string.</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">Schema</code></td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td><code class="language-plaintext highlighter-rouge">"dbo"</code></td>
+      <td>SQL Server schema that contains the <code class="language-plaintext highlighter-rouge">workqueue</code> table.</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">AdminConnectionString</code></td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td><em>(same as ConnectionString)</em></td>
+      <td>Connection string for DDL migrations.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="redis--redisoptions">Redis — <code class="language-plaintext highlighter-rouge">RedisOptions</code></h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Property</th>
+      <th>Type</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">ConnectionString</code></td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td>—</td>
+      <td>StackExchange.Redis connection string.</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">KeyPrefix</code></td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td><code class="language-plaintext highlighter-rouge">"workqueue"</code></td>
+      <td>Prefix applied to all Redis keys created by this library.</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">ConsumerGroup</code></td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td><code class="language-plaintext highlighter-rouge">"default"</code></td>
+      <td>Redis Streams consumer group name.</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">ConsumerName</code></td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td><code class="language-plaintext highlighter-rouge">{MachineName}-{ProcessId}</code></td>
+      <td>Consumer instance name within the group. Override to a stable value in tests.</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">ReclaimIdleTime</code></td>
+      <td><code class="language-plaintext highlighter-rouge">TimeSpan?</code></td>
+      <td><code class="language-plaintext highlighter-rouge">3 × MaxWaitTime</code></td>
+      <td>How long a pending message must be idle before another consumer may reclaim it.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="sqlite--sqlitetransportoptions">SQLite — <code class="language-plaintext highlighter-rouge">SqliteTransportOptions</code></h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Property</th>
+      <th>Type</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">ConnectionString</code></td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td>—</td>
+      <td>SQLite connection string. Example: <code class="language-plaintext highlighter-rouge">Data Source=./workqueue.db</code></td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">LockTimeout</code></td>
+      <td><code class="language-plaintext highlighter-rouge">TimeSpan</code></td>
+      <td><code class="language-plaintext highlighter-rouge">60s</code></td>
+      <td>How long a claimed message is held before another process may reclaim it if the claimant crashes. Set this to comfortably exceed the longest expected consumer processing time.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="retry-and-dead-letter-behavior">Retry and dead-letter behavior</h2>
+
+<p>When a consumer throws an exception, the message is retried up to <code class="language-plaintext highlighter-rouge">MaxRetries</code> times. If <code class="language-plaintext highlighter-rouge">RetryDelay</code> is set, the message is held for that duration before becoming eligible again. After the final attempt, the row is marked <code class="language-plaintext highlighter-rouge">failedat</code> and polling skips it permanently.</p>
+
+<p>To recover dead-lettered messages:</p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// Reset all dead-lettered messages of this type for redelivery</span>
+<span class="kt">int</span> <span class="n">replayed</span> <span class="p">=</span> <span class="k">await</span> <span class="n">bus</span><span class="p">.</span><span class="n">ReplayDeadLettered</span><span class="p">&lt;</span><span class="n">OrderSubmitted</span><span class="p">&gt;();</span>
+</code></pre></div></div>
+
+<p>To receive a notification when a message is dead-lettered, register a fault consumer:</p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">bus</span><span class="p">.</span><span class="n">SubscribeFault</span><span class="p">&lt;</span><span class="n">OrderSubmitted</span><span class="p">&gt;(</span><span class="k">new</span> <span class="nf">OrderAlertConsumer</span><span class="p">());</span>
+
+<span class="k">class</span> <span class="nc">OrderAlertConsumer</span> <span class="p">:</span> <span class="n">IConsumer</span><span class="p">&lt;</span><span class="n">Fault</span><span class="p">&lt;</span><span class="n">OrderSubmitted</span><span class="p">&gt;&gt;</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="n">Task</span> <span class="nf">Consume</span><span class="p">(</span><span class="n">ConsumeContext</span><span class="p">&lt;</span><span class="n">Fault</span><span class="p">&lt;</span><span class="n">OrderSubmitted</span><span class="p">&gt;&gt;</span> <span class="n">ctx</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="kt">var</span> <span class="n">f</span> <span class="p">=</span> <span class="n">ctx</span><span class="p">.</span><span class="n">Message</span><span class="p">;</span>
+        <span class="c1">// f.OriginalMessage  — the original payload</span>
+        <span class="c1">// f.ExceptionType    — full type name of the exception</span>
+        <span class="c1">// f.ExceptionMessage — exception message</span>
+        <span class="c1">// f.StackTrace       — full stack trace</span>
+        <span class="c1">// f.AttemptCount     — how many times delivery was attempted</span>
+        <span class="c1">// f.FaultedAt        — when it was dead-lettered</span>
+        <span class="k">return</span> <span class="nf">Notify</span><span class="p">(</span><span class="n">f</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h2 id="consumecontext-properties">ConsumeContext properties</h2>
+
+<p>Every consumer receives a <code class="language-plaintext highlighter-rouge">ConsumeContext&lt;T&gt;</code> with the following members:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Member</th>
+      <th>Type</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">Message</code></td>
+      <td><code class="language-plaintext highlighter-rouge">T</code></td>
+      <td>The deserialized payload.</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">MessageId</code></td>
+      <td><code class="language-plaintext highlighter-rouge">Guid</code></td>
+      <td>Stable UUID assigned at publish time. Identical across all retry attempts for the same message.</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">SentTime</code></td>
+      <td><code class="language-plaintext highlighter-rouge">DateTimeOffset</code></td>
+      <td>Timestamp from when <code class="language-plaintext highlighter-rouge">Publish()</code> was called.</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">CancellationToken</code></td>
+      <td><code class="language-plaintext highlighter-rouge">CancellationToken</code></td>
+      <td>Cancelled when the bus is disposed.</td>
+    </tr>
+  </tbody>
+</table>
+
+    </main>
+  </div>
+</div>
+<footer>
+  <div class="wrap footer-inner">
+    <span>© TownSuite · MIT License</span>
+    <nav class="footer-links">
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/blob/main/Readme.md" target="_blank" rel="noopener">README</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/issues" target="_blank" rel="noopener">Issues</a>
+    </nav>
+  </div>
+</footer>
+
+
+</body>
+</html>

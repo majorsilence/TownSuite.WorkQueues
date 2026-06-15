@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkQueue → Message Bus — TownSuite.WorkQueues — a work queue in the database you already run</title>
+<meta name="description" content="How to migrate from IWorkQueue / DbBackedWorkQueue to IMessageBus and IConsumer<T>.">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('wq-theme') || 'system';
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {
+      document.documentElement.setAttribute('data-theme', 'system');
+    }
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;650;700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/TownSuite.WorkQueues/assets/css/main.css">
+<!-- Begin Jekyll SEO tag v2.9.0 -->
+<title>WorkQueue → Message Bus — TownSuite.WorkQueues | TownSuite.WorkQueues</title>
+<meta name="generator" content="Jekyll v4.4.1" />
+<meta property="og:title" content="WorkQueue → Message Bus — TownSuite.WorkQueues" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="How to migrate from IWorkQueue / DbBackedWorkQueue to IMessageBus and IConsumer." />
+<meta name="twitter:description" property="og:description" content="How to migrate from IWorkQueue / DbBackedWorkQueue to IMessageBus and IConsumer." />
+<link rel="canonical" href="http://localhost:4000/TownSuite.WorkQueues/docs/workqueue-to-bus/" />
+<meta property="og:url" content="http://localhost:4000/TownSuite.WorkQueues/docs/workqueue-to-bus/" />
+<meta property="og:site_name" content="TownSuite.WorkQueues" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="WorkQueue → Message Bus — TownSuite.WorkQueues" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebPage","description":"How to migrate from IWorkQueue / DbBackedWorkQueue to IMessageBus and IConsumer.","headline":"WorkQueue → Message Bus — TownSuite.WorkQueues","url":"http://localhost:4000/TownSuite.WorkQueues/docs/workqueue-to-bus/"}</script>
+<!-- End Jekyll SEO tag -->
+
+</head>
+<body data-anim="on">
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="wordmark" href="/TownSuite.WorkQueues/">
+      <span class="wordmark-box"><img src="/TownSuite.WorkQueues/assets/logo.svg" alt="TownSuite"></span>
+      <span>TownSuite<span class="dim">.</span>WorkQueues</span>
+    </a>
+    <nav class="nav-links">
+      <a href="/TownSuite.WorkQueues/#why">Why</a>
+      <a href="/TownSuite.WorkQueues/#api">API</a>
+      <a href="/TownSuite.WorkQueues/#reliability">Reliability</a>
+      <a href="/TownSuite.WorkQueues/#backends">Backends</a>
+      <a href="/TownSuite.WorkQueues/#benchmarks">Benchmarks</a>
+      <a href="/TownSuite.WorkQueues/docs/">Docs</a>
+      <a class="nav-gh" href="https://github.com/TownSuite/TownSuite.WorkQueues" target="_blank" rel="noopener">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<div class="docs-shell">
+  <div class="wrap docs-wrap">
+    <aside class="docs-sidebar">
+      <nav class="docs-nav">
+        <a class="docs-home-link" href="/TownSuite.WorkQueues/docs/">Getting Started</a>
+        <div class="docs-nav-group">
+          <p class="docs-nav-label">Backends</p>
+          <a href="/TownSuite.WorkQueues/docs/backends/postgres/">PostgreSQL</a>
+          <a href="/TownSuite.WorkQueues/docs/backends/sqlserver/">SQL Server</a>
+          <a href="/TownSuite.WorkQueues/docs/backends/redis/">Redis</a>
+          <a href="/TownSuite.WorkQueues/docs/backends/sqlite/">SQLite <span class="docs-badge">local dev</span></a>
+        </div>
+        <div class="docs-nav-group">
+          <p class="docs-nav-label">Guides</p>
+          <a href="/TownSuite.WorkQueues/docs/workqueue-to-bus/" class="active">WorkQueue → Message Bus</a>
+          <a href="/TownSuite.WorkQueues/docs/migrating/">Migrating from v1</a>
+        </div>
+        <div class="docs-nav-group">
+          <p class="docs-nav-label">Reference</p>
+          <a href="/TownSuite.WorkQueues/docs/configuration/">Configuration</a>
+        </div>
+      </nav>
+    </aside>
+    <main class="docs-content">
+      <h1 id="workqueue--message-bus">WorkQueue → Message Bus</h1>
+
+<p>This guide covers migrating from the pull-based <code class="language-plaintext highlighter-rouge">IWorkQueue</code> / <code class="language-plaintext highlighter-rouge">DbBackedWorkQueue</code> pattern — where your code owns the polling loop, connection, and transaction — to the push-based <code class="language-plaintext highlighter-rouge">IMessageBus</code> / <code class="language-plaintext highlighter-rouge">IConsumer&lt;T&gt;</code> pattern, where the library owns all of that.</p>
+
+<hr />
+
+<h2 id="should-you-migrate">Should you migrate?</h2>
+
+<p>Work through these questions before starting. Some patterns don’t belong in the bus at all.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Question</th>
+      <th>If yes</th>
+      <th>If no</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Is your database PostgreSQL or SQL Server?</td>
+      <td>Continue</td>
+      <td>Stop — stay with <code class="language-plaintext highlighter-rouge">IWorkQueue</code> or switch to <code class="language-plaintext highlighter-rouge">RedisMessageBus</code></td>
+    </tr>
+    <tr>
+      <td>Does your dequeue run inside a transaction that also writes to other tables?</td>
+      <td><strong>Stay with <code class="language-plaintext highlighter-rouge">IWorkQueue</code></strong> — the bus commits internally; you cannot join its transaction</td>
+      <td>Continue</td>
+    </tr>
+    <tr>
+      <td>Do you use <code class="language-plaintext highlighter-rouge">DbBackedWorkQueue_NonDestructive</code> and re-read processed rows for audit?</td>
+      <td><strong>Stay</strong> — the bus marks rows processed and excludes them from future polls</td>
+      <td>Continue</td>
+    </tr>
+    <tr>
+      <td>Do you rely on the <code class="language-plaintext highlighter-rouge">offset</code> parameter to skip bad messages across workers?</td>
+      <td>The bus handles this automatically via retries and dead-lettering. Continue.</td>
+      <td>Continue</td>
+    </tr>
+    <tr>
+      <td>Are you happy for the channel name to be <code class="language-plaintext highlighter-rouge">typeof(T).FullName</code>?</td>
+      <td>Continue</td>
+      <td>Read the <a href="#channel-name">channel name</a> section carefully before deciding</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout">
+<strong>Do not migrate</strong> any call site where <code>Dequeue</code> runs inside the same transaction as business-critical writes to other tables. The message bus manages its own transaction and you cannot enlist it in yours.
+</div>
+
+<hr />
+
+<h2 id="what-changes">What changes</h2>
+
+<p>Three things shift conceptually.</p>
+
+<h3 id="pull--push">Pull → push</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>IWorkQueue (pull)                      IMessageBus (push)
+───────────────────────────────────    ───────────────────────────────────
+You write the loop                     Library owns the loop
+You open the connection                Library opens the connection
+You manage the transaction             Library manages the transaction
+You handle retry / skip logic          Library retries, then dead-letters
+</code></pre></div></div>
+
+<h3 id="channel-name">Channel name</h3>
+
+<p>This is the most common migration pitfall.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th> </th>
+      <th>Channel value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">workQueue.Enqueue("orders", ...)</code></td>
+      <td><code class="language-plaintext highlighter-rouge">"orders"</code> — whatever string you pass</td>
+    </tr>
+    <tr>
+      <td><code class="language-plaintext highlighter-rouge">bus.Publish&lt;OrderPayload&gt;(...)</code></td>
+      <td><code class="language-plaintext highlighter-rouge">"MyApp.Messages.OrderPayload"</code> — <code class="language-plaintext highlighter-rouge">typeof(T).FullName</code>, auto-derived</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Messages already sitting in the database under <code class="language-plaintext highlighter-rouge">"orders"</code> will <strong>not</strong> be picked up by a bus subscriber for <code class="language-plaintext highlighter-rouge">OrderPayload</code>, because the bus polls for <code class="language-plaintext highlighter-rouge">"MyApp.Messages.OrderPayload"</code>. See <a href="#handling-in-flight-messages">handling in-flight messages</a>.</p>
+
+<h3 id="transaction-ownership">Transaction ownership</h3>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// IWorkQueue — you own the transaction</span>
+<span class="k">using</span> <span class="nn">var</span> <span class="n">txn</span> <span class="p">=</span> <span class="n">cn</span><span class="p">.</span><span class="nf">BeginTransaction</span><span class="p">();</span>
+<span class="kt">var</span> <span class="n">item</span> <span class="p">=</span> <span class="k">await</span> <span class="n">workQueue</span><span class="p">.</span><span class="n">Dequeue</span><span class="p">&lt;</span><span class="n">OrderPayload</span><span class="p">&gt;(</span><span class="s">"orders"</span><span class="p">,</span> <span class="n">cn</span><span class="p">,</span> <span class="n">txn</span><span class="p">);</span>
+<span class="k">if</span> <span class="p">(</span><span class="n">item</span> <span class="k">is</span> <span class="k">null</span><span class="p">)</span> <span class="p">{</span> <span class="n">txn</span><span class="p">.</span><span class="nf">Rollback</span><span class="p">();</span> <span class="k">return</span><span class="p">;</span> <span class="p">}</span>
+<span class="k">await</span> <span class="nf">ProcessOrder</span><span class="p">(</span><span class="n">item</span><span class="p">);</span>
+<span class="n">txn</span><span class="p">.</span><span class="nf">Commit</span><span class="p">();</span> <span class="c1">// or Rollback() on failure — your decision</span>
+
+<span class="c1">// IMessageBus — the library owns the transaction</span>
+<span class="k">public</span> <span class="k">class</span> <span class="nc">OrderConsumer</span> <span class="p">:</span> <span class="n">IConsumer</span><span class="p">&lt;</span><span class="n">OrderPayload</span><span class="p">&gt;</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">async</span> <span class="n">Task</span> <span class="nf">Consume</span><span class="p">(</span><span class="n">ConsumeContext</span><span class="p">&lt;</span><span class="n">OrderPayload</span><span class="p">&gt;</span> <span class="n">ctx</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">await</span> <span class="nf">ProcessOrder</span><span class="p">(</span><span class="n">ctx</span><span class="p">.</span><span class="n">Message</span><span class="p">);</span>
+        <span class="c1">// Throw to retry. After MaxRetries the message is dead-lettered.</span>
+        <span class="c1">// No transaction to open or commit.</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<hr />
+
+<h2 id="step-by-step-migration">Step-by-step migration</h2>
+
+<h3 id="1-find-all-call-sites">1. Find all call sites</h3>
+
+<p>Search the codebase for:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>IWorkQueue
+DbBackedWorkQueue
+.Enqueue(
+.Dequeue&lt;
+</code></pre></div></div>
+
+<p>For each match, note the channel string and the payload type <code class="language-plaintext highlighter-rouge">T</code>.</p>
+
+<h3 id="2-create-a-named-message-type">2. Create a named message type</h3>
+
+<p>The bus derives the channel from <code class="language-plaintext highlighter-rouge">typeof(T).FullName</code>. The type must be a named class or record — it cannot be an anonymous type or <code class="language-plaintext highlighter-rouge">Dictionary&lt;string, object&gt;</code>.</p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// Before — anonymous type, no stable channel name</span>
+<span class="k">await</span> <span class="n">workQueue</span><span class="p">.</span><span class="nf">Enqueue</span><span class="p">(</span><span class="s">"orders"</span><span class="p">,</span> <span class="k">new</span> <span class="p">{</span> <span class="n">OrderId</span> <span class="p">=</span> <span class="m">42</span><span class="p">,</span> <span class="n">Customer</span> <span class="p">=</span> <span class="s">"Alice"</span> <span class="p">},</span> <span class="n">cn</span><span class="p">);</span>
+
+<span class="c1">// After — named record, channel = "MyApp.Messages.OrderPayload"</span>
+<span class="k">public</span> <span class="k">record</span> <span class="nc">OrderPayload</span><span class="p">(</span><span class="kt">int</span> <span class="n">OrderId</span><span class="p">,</span> <span class="kt">string</span> <span class="n">Customer</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Keep the class name and namespace stable after migration. Moving or renaming the type changes the channel name and orphans any messages stored under the old name.</p>
+
+<h3 id="3-replace-the-polling-worker-with-iconsumert">3. Replace the polling worker with IConsumer&lt;T&gt;</h3>
+
+<p>Take the processing logic from inside the dequeue loop and put it in <code class="language-plaintext highlighter-rouge">Consume</code>. Remove all connection, transaction, null-check, and offset management.</p>
+
+<p><strong>Before:</strong></p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">public</span> <span class="k">class</span> <span class="nc">OrderWorker</span> <span class="p">:</span> <span class="n">BackgroundService</span>
+<span class="p">{</span>
+    <span class="k">private</span> <span class="k">readonly</span> <span class="n">IWorkQueue</span> <span class="n">_queue</span><span class="p">;</span>
+    <span class="k">private</span> <span class="k">readonly</span> <span class="n">NpgsqlDataSource</span> <span class="n">_db</span><span class="p">;</span>
+
+    <span class="k">protected</span> <span class="k">override</span> <span class="k">async</span> <span class="n">Task</span> <span class="nf">ExecuteAsync</span><span class="p">(</span><span class="n">CancellationToken</span> <span class="n">ct</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">while</span> <span class="p">(!</span><span class="n">ct</span><span class="p">.</span><span class="n">IsCancellationRequested</span><span class="p">)</span>
+        <span class="p">{</span>
+            <span class="k">await</span> <span class="k">using</span> <span class="nn">var</span> <span class="n">cn</span> <span class="p">=</span> <span class="k">await</span> <span class="n">_db</span><span class="p">.</span><span class="nf">OpenConnectionAsync</span><span class="p">(</span><span class="n">ct</span><span class="p">);</span>
+            <span class="k">await</span> <span class="k">using</span> <span class="nn">var</span> <span class="n">txn</span> <span class="p">=</span> <span class="k">await</span> <span class="n">cn</span><span class="p">.</span><span class="nf">BeginTransactionAsync</span><span class="p">(</span><span class="n">ct</span><span class="p">);</span>
+
+            <span class="kt">var</span> <span class="n">item</span> <span class="p">=</span> <span class="k">await</span> <span class="n">_queue</span><span class="p">.</span><span class="n">Dequeue</span><span class="p">&lt;</span><span class="n">OrderPayload</span><span class="p">&gt;(</span><span class="s">"orders"</span><span class="p">,</span> <span class="n">cn</span><span class="p">,</span> <span class="n">txn</span><span class="p">);</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">item</span> <span class="k">is</span> <span class="k">null</span><span class="p">)</span>
+            <span class="p">{</span>
+                <span class="k">await</span> <span class="n">txn</span><span class="p">.</span><span class="nf">RollbackAsync</span><span class="p">(</span><span class="n">ct</span><span class="p">);</span>
+                <span class="k">await</span> <span class="n">Task</span><span class="p">.</span><span class="nf">Delay</span><span class="p">(</span><span class="n">TimeSpan</span><span class="p">.</span><span class="nf">FromSeconds</span><span class="p">(</span><span class="m">5</span><span class="p">),</span> <span class="n">ct</span><span class="p">);</span>
+                <span class="k">continue</span><span class="p">;</span>
+            <span class="p">}</span>
+
+            <span class="k">try</span>
+            <span class="p">{</span>
+                <span class="k">await</span> <span class="nf">ProcessOrder</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="n">ct</span><span class="p">);</span>
+                <span class="k">await</span> <span class="n">txn</span><span class="p">.</span><span class="nf">CommitAsync</span><span class="p">(</span><span class="n">ct</span><span class="p">);</span>
+            <span class="p">}</span>
+            <span class="k">catch</span> <span class="p">(</span><span class="n">Exception</span> <span class="n">ex</span><span class="p">)</span>
+            <span class="p">{</span>
+                <span class="n">_logger</span><span class="p">.</span><span class="nf">LogError</span><span class="p">(</span><span class="n">ex</span><span class="p">,</span> <span class="s">"Failed to process order {Id}"</span><span class="p">,</span> <span class="n">item</span><span class="p">.</span><span class="n">OrderId</span><span class="p">);</span>
+                <span class="k">await</span> <span class="n">txn</span><span class="p">.</span><span class="nf">RollbackAsync</span><span class="p">(</span><span class="n">ct</span><span class="p">);</span>
+                <span class="c1">// message returns to queue on rollback; retried next cycle</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p><strong>After:</strong></p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">public</span> <span class="k">class</span> <span class="nc">OrderConsumer</span> <span class="p">:</span> <span class="n">IConsumer</span><span class="p">&lt;</span><span class="n">OrderPayload</span><span class="p">&gt;</span>
+<span class="p">{</span>
+    <span class="k">private</span> <span class="k">readonly</span> <span class="n">ILogger</span><span class="p">&lt;</span><span class="n">OrderConsumer</span><span class="p">&gt;</span> <span class="n">_logger</span><span class="p">;</span>
+
+    <span class="k">public</span> <span class="nf">OrderConsumer</span><span class="p">(</span><span class="n">ILogger</span><span class="p">&lt;</span><span class="n">OrderConsumer</span><span class="p">&gt;</span> <span class="n">logger</span><span class="p">)</span> <span class="p">=&gt;</span> <span class="n">_logger</span> <span class="p">=</span> <span class="n">logger</span><span class="p">;</span>
+
+    <span class="k">public</span> <span class="k">async</span> <span class="n">Task</span> <span class="nf">Consume</span><span class="p">(</span><span class="n">ConsumeContext</span><span class="p">&lt;</span><span class="n">OrderPayload</span><span class="p">&gt;</span> <span class="n">ctx</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">await</span> <span class="nf">ProcessOrder</span><span class="p">(</span><span class="n">ctx</span><span class="p">.</span><span class="n">Message</span><span class="p">,</span> <span class="n">ctx</span><span class="p">.</span><span class="n">CancellationToken</span><span class="p">);</span>
+        <span class="c1">// throw → retry; return normally → acknowledged</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Delete <code class="language-plaintext highlighter-rouge">OrderWorker</code> entirely. The bus provides the loop, connection, and retry logic.</p>
+
+<h3 id="4-replace-enqueue-with-publish">4. Replace Enqueue with Publish</h3>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// Before — requires an open connection and optional transaction</span>
+<span class="k">await</span> <span class="n">_workQueue</span><span class="p">.</span><span class="nf">Enqueue</span><span class="p">(</span><span class="s">"orders"</span><span class="p">,</span> <span class="n">payload</span><span class="p">,</span> <span class="n">cn</span><span class="p">,</span> <span class="n">txn</span><span class="p">);</span>
+
+<span class="c1">// After — no connection or transaction arguments</span>
+<span class="k">await</span> <span class="n">_bus</span><span class="p">.</span><span class="nf">Publish</span><span class="p">(</span><span class="n">payload</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">Publish</code> opens its own connection internally. If you need to publish inside a business transaction, see <a href="#transactional-publishing">transactional publishing</a> below.</p>
+
+<h3 id="5-register-in-di">5. Register in DI</h3>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// Program.cs</span>
+
+<span class="c1">// Options (replace with SqlServerTransportOptions for SQL Server)</span>
+<span class="n">builder</span><span class="p">.</span><span class="n">Services</span><span class="p">.</span><span class="nf">AddSingleton</span><span class="p">(</span><span class="k">new</span> <span class="n">SqlTransportOptions</span>
+<span class="p">{</span>
+    <span class="n">ConnectionString</span> <span class="p">=</span> <span class="s">"Host=localhost;Database=myapp;Username=app;Password=secret"</span><span class="p">,</span>
+    <span class="n">Schema</span>     <span class="p">=</span> <span class="s">"transport"</span><span class="p">,</span>
+    <span class="n">MaxRetries</span> <span class="p">=</span> <span class="m">3</span><span class="p">,</span>
+    <span class="n">RetryDelay</span> <span class="p">=</span> <span class="n">TimeSpan</span><span class="p">.</span><span class="nf">FromSeconds</span><span class="p">(</span><span class="m">10</span><span class="p">)</span>   <span class="c1">// optional back-off between retries</span>
+<span class="p">});</span>
+
+<span class="c1">// Migration — creates / updates table on startup</span>
+<span class="n">builder</span><span class="p">.</span><span class="n">Services</span><span class="p">.</span><span class="nf">AddPostgresMigrationHostedService</span><span class="p">();</span>
+
+<span class="c1">// Bus — register all consumers inside the configure callback</span>
+<span class="n">builder</span><span class="p">.</span><span class="n">Services</span><span class="p">.</span><span class="nf">AddPostgresMessageBus</span><span class="p">((</span><span class="n">sp</span><span class="p">,</span> <span class="n">bus</span><span class="p">)</span> <span class="p">=&gt;</span>
+<span class="p">{</span>
+    <span class="c1">// Singleton consumer (stateless)</span>
+    <span class="n">bus</span><span class="p">.</span><span class="nf">Subscribe</span><span class="p">(</span><span class="k">new</span> <span class="nf">OrderConsumer</span><span class="p">(</span><span class="n">sp</span><span class="p">.</span><span class="n">GetRequiredService</span><span class="p">&lt;</span><span class="n">ILogger</span><span class="p">&lt;</span><span class="n">OrderConsumer</span><span class="p">&gt;&gt;()));</span>
+
+    <span class="c1">// Or DI-scoped — a fresh instance is resolved per message</span>
+    <span class="c1">// bus.Subscribe&lt;OrderPayload, OrderConsumer&gt;();</span>
+<span class="p">});</span>
+</code></pre></div></div>
+
+<h3 id="6-remove-the-old-worker">6. Remove the old worker</h3>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// Remove this</span>
+<span class="n">builder</span><span class="p">.</span><span class="n">Services</span><span class="p">.</span><span class="n">AddHostedService</span><span class="p">&lt;</span><span class="n">OrderWorker</span><span class="p">&gt;();</span>
+<span class="c1">// and the IWorkQueue registration if nothing else uses it</span>
+</code></pre></div></div>
+
+<h3 id="7-handle-in-flight-messages">7. Handle in-flight messages</h3>
+
+<p>Before deploying, decide what to do with messages still sitting in the database under the old channel name (e.g. <code class="language-plaintext highlighter-rouge">"orders"</code>).</p>
+
+<p><strong>Option A — drain first (cleanest):</strong> wait for the old worker to process everything under <code class="language-plaintext highlighter-rouge">"orders"</code>, then deploy the new code.</p>
+
+<p><strong>Option B — rename via SQL:</strong> bulk-update the channel column before deploying so the new bus sees them immediately.</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- PostgreSQL</span>
+<span class="k">UPDATE</span> <span class="n">transport</span><span class="p">.</span><span class="n">workqueue</span>
+<span class="k">SET</span> <span class="n">channel</span> <span class="o">=</span> <span class="s1">'MyApp.Messages.OrderPayload'</span>
+<span class="k">WHERE</span> <span class="n">channel</span> <span class="o">=</span> <span class="s1">'orders'</span>
+  <span class="k">AND</span> <span class="n">timeprocessedutc</span> <span class="k">IS</span> <span class="k">NULL</span>
+  <span class="k">AND</span> <span class="n">failedat</span> <span class="k">IS</span> <span class="k">NULL</span><span class="p">;</span>
+
+<span class="c1">-- SQL Server</span>
+<span class="k">UPDATE</span> <span class="p">[</span><span class="n">dbo</span><span class="p">].[</span><span class="n">workqueue</span><span class="p">]</span>
+<span class="k">SET</span> <span class="p">[</span><span class="n">channel</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'MyApp.Messages.OrderPayload'</span>
+<span class="k">WHERE</span> <span class="p">[</span><span class="n">channel</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'orders'</span>
+  <span class="k">AND</span> <span class="p">[</span><span class="n">timeprocessedutc</span><span class="p">]</span> <span class="k">IS</span> <span class="k">NULL</span>
+  <span class="k">AND</span> <span class="p">[</span><span class="n">failedat</span><span class="p">]</span> <span class="k">IS</span> <span class="k">NULL</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p><strong>Option C — parallel cutover:</strong> deploy both the old worker and the new bus simultaneously. The old worker drains rows under <code class="language-plaintext highlighter-rouge">"orders"</code>; the new bus handles newly published rows under <code class="language-plaintext highlighter-rouge">"MyApp.Messages.OrderPayload"</code>. Remove the old worker once its channel is empty.</p>
+
+<hr />
+
+<h2 id="handling-in-flight-messages">Handling in-flight messages</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Strategy</th>
+      <th>How</th>
+      <th>When to use</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Drain then deploy</td>
+      <td>Old worker finishes; then deploy</td>
+      <td>Low-traffic queues, maintenance window available</td>
+    </tr>
+    <tr>
+      <td>SQL channel rename</td>
+      <td><code class="language-plaintext highlighter-rouge">UPDATE ... SET channel = 'FullTypeName'</code> before deploy</td>
+      <td>Few rows; can tolerate a brief manual step</td>
+    </tr>
+    <tr>
+      <td>Parallel cutover</td>
+      <td>Old worker + new bus run side by side</td>
+      <td>Cannot afford downtime; high-traffic queues</td>
+    </tr>
+    <tr>
+      <td>Keep old channel</td>
+      <td>Keep <code class="language-plaintext highlighter-rouge">IWorkQueue</code> producer; migrate only the consumer later</td>
+      <td>Gradual rollout across multiple deploys</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr />
+
+<h2 id="transactional-publishing">Transactional publishing</h2>
+
+<p><code class="language-plaintext highlighter-rouge">IMessageBus.Publish</code> always opens its own connection. If you need the publish to be atomic with other database writes, you cannot pass a transaction to it.</p>
+
+<p>The cleanest solution is to keep <code class="language-plaintext highlighter-rouge">IWorkQueue.Enqueue</code> as a transactional outbox — write to the queue inside your business transaction, and let the bus poll and deliver:</p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// Service method — runs inside a business transaction</span>
+<span class="k">public</span> <span class="k">async</span> <span class="n">Task</span> <span class="nf">SubmitOrderAsync</span><span class="p">(</span><span class="n">OrderPayload</span> <span class="n">payload</span><span class="p">,</span> <span class="n">DbConnection</span> <span class="n">cn</span><span class="p">,</span> <span class="n">DbTransaction</span> <span class="n">txn</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="c1">// Update your business data</span>
+    <span class="k">await</span> <span class="n">_orderRepository</span><span class="p">.</span><span class="nf">InsertAsync</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="n">cn</span><span class="p">,</span> <span class="n">txn</span><span class="p">);</span>
+
+    <span class="c1">// Write to the queue transactionally.</span>
+    <span class="c1">// Use the type's FullName as the channel — the bus polls for exactly this string.</span>
+    <span class="k">await</span> <span class="n">_workQueue</span><span class="p">.</span><span class="nf">Enqueue</span><span class="p">(</span>
+        <span class="n">channel</span><span class="p">:</span> <span class="k">typeof</span><span class="p">(</span><span class="n">OrderPayload</span><span class="p">).</span><span class="n">FullName</span><span class="p">!,</span>
+        <span class="n">payload</span><span class="p">:</span> <span class="n">payload</span><span class="p">,</span>
+        <span class="n">con</span><span class="p">:</span> <span class="n">cn</span><span class="p">,</span>
+        <span class="n">txn</span><span class="p">:</span> <span class="n">txn</span><span class="p">);</span>
+
+    <span class="k">await</span> <span class="n">txn</span><span class="p">.</span><span class="nf">CommitAsync</span><span class="p">();</span>
+    <span class="c1">// If this commit fails, both the order insert and the queue row are rolled back.</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>The bus polls for <code class="language-plaintext highlighter-rouge">"MyApp.Messages.OrderPayload"</code> (the FullName), finds these rows, and delivers them to <code class="language-plaintext highlighter-rouge">OrderConsumer</code> — no outbox table or change-data-capture pipeline needed.</p>
+
+<hr />
+
+<h2 id="dead-letter-management">Dead-letter management</h2>
+
+<p>After migration, failed messages accumulate with <code class="language-plaintext highlighter-rouge">failedat IS NOT NULL</code>:</p>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">-- Inspect dead-lettered messages</span>
+<span class="k">SELECT</span> <span class="n">id</span><span class="p">,</span> <span class="n">channel</span><span class="p">,</span> <span class="n">retrycount</span><span class="p">,</span> <span class="n">failedat</span><span class="p">,</span>
+       <span class="n">substr</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">80</span><span class="p">)</span> <span class="k">AS</span> <span class="n">payload_preview</span>
+<span class="k">FROM</span> <span class="n">transport</span><span class="p">.</span><span class="n">workqueue</span>
+<span class="k">WHERE</span> <span class="n">failedat</span> <span class="k">IS</span> <span class="k">NOT</span> <span class="k">NULL</span>
+<span class="k">ORDER</span> <span class="k">BY</span> <span class="n">failedat</span> <span class="k">DESC</span><span class="p">;</span>
+
+<span class="c1">-- Replay programmatically</span>
+<span class="nb">int</span> <span class="n">replayed</span> <span class="o">=</span> <span class="n">await</span> <span class="n">bus</span><span class="p">.</span><span class="n">ReplayDeadLettered</span><span class="o">&lt;</span><span class="n">OrderPayload</span><span class="o">&gt;</span><span class="p">();</span>
+
+<span class="c1">-- Or via SQL</span>
+<span class="k">UPDATE</span> <span class="n">transport</span><span class="p">.</span><span class="n">workqueue</span>
+<span class="k">SET</span> <span class="n">failedat</span> <span class="o">=</span> <span class="k">NULL</span><span class="p">,</span> <span class="n">retrycount</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">scheduledfor</span> <span class="o">=</span> <span class="k">NULL</span>
+<span class="k">WHERE</span> <span class="n">channel</span> <span class="o">=</span> <span class="s1">'MyApp.Messages.OrderPayload'</span>
+  <span class="k">AND</span> <span class="n">failedat</span> <span class="k">IS</span> <span class="k">NOT</span> <span class="k">NULL</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>To receive a notification the moment a message is dead-lettered:</p>
+
+<div class="language-csharp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">bus</span><span class="p">.</span><span class="n">SubscribeFault</span><span class="p">&lt;</span><span class="n">OrderPayload</span><span class="p">&gt;(</span><span class="k">new</span> <span class="nf">OrderDeadLetterHandler</span><span class="p">());</span>
+
+<span class="k">class</span> <span class="nc">OrderDeadLetterHandler</span> <span class="p">:</span> <span class="n">IConsumer</span><span class="p">&lt;</span><span class="n">Fault</span><span class="p">&lt;</span><span class="n">OrderPayload</span><span class="p">&gt;&gt;</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="n">Task</span> <span class="nf">Consume</span><span class="p">(</span><span class="n">ConsumeContext</span><span class="p">&lt;</span><span class="n">Fault</span><span class="p">&lt;</span><span class="n">OrderPayload</span><span class="p">&gt;&gt;</span> <span class="n">ctx</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="kt">var</span> <span class="n">f</span> <span class="p">=</span> <span class="n">ctx</span><span class="p">.</span><span class="n">Message</span><span class="p">;</span>
+        <span class="c1">// f.OriginalMessage, f.ExceptionType, f.AttemptCount, f.FaultedAt</span>
+        <span class="k">return</span> <span class="nf">AlertOpsTeam</span><span class="p">(</span><span class="n">f</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<hr />
+
+<h2 id="api-comparison">API comparison</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Concern</th>
+      <th><code class="language-plaintext highlighter-rouge">IWorkQueue</code></th>
+      <th><code class="language-plaintext highlighter-rouge">IMessageBus</code></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Enqueue / publish</td>
+      <td><code class="language-plaintext highlighter-rouge">workQueue.Enqueue("channel", obj, cn, txn)</code></td>
+      <td><code class="language-plaintext highlighter-rouge">bus.Publish(obj)</code></td>
+    </tr>
+    <tr>
+      <td>Dequeue / consume</td>
+      <td><code class="language-plaintext highlighter-rouge">workQueue.Dequeue&lt;T&gt;("channel", cn, txn)</code></td>
+      <td><code class="language-plaintext highlighter-rouge">IConsumer&lt;T&gt;.Consume(ctx)</code></td>
+    </tr>
+    <tr>
+      <td>Channel name</td>
+      <td>Any string you supply</td>
+      <td><code class="language-plaintext highlighter-rouge">typeof(T).FullName</code> (automatic)</td>
+    </tr>
+    <tr>
+      <td>Connection</td>
+      <td>Caller provides open <code class="language-plaintext highlighter-rouge">DbConnection</code></td>
+      <td>Library manages internally</td>
+    </tr>
+    <tr>
+      <td>Transaction</td>
+      <td>Caller provides <code class="language-plaintext highlighter-rouge">DbTransaction</code></td>
+      <td>Library manages internally</td>
+    </tr>
+    <tr>
+      <td>Polling loop</td>
+      <td>You write it (<code class="language-plaintext highlighter-rouge">BackgroundService</code>)</td>
+      <td>Built into the bus</td>
+    </tr>
+    <tr>
+      <td>Retry on failure</td>
+      <td>Rollback + loop again (or skip with <code class="language-plaintext highlighter-rouge">offset</code>)</td>
+      <td>Automatic up to <code class="language-plaintext highlighter-rouge">MaxRetries</code></td>
+    </tr>
+    <tr>
+      <td>Dead-letter</td>
+      <td>None — you decide what to do on failure</td>
+      <td><code class="language-plaintext highlighter-rouge">failedat</code> column; queryable; replayable</td>
+    </tr>
+    <tr>
+      <td>Multiple consumers for same message</td>
+      <td>Not applicable (one dequeuer per item)</td>
+      <td>Multiple <code class="language-plaintext highlighter-rouge">Subscribe</code> calls; each gets a copy</td>
+    </tr>
+    <tr>
+      <td>Delivery order</td>
+      <td>FIFO by <code class="language-plaintext highlighter-rouge">id</code></td>
+      <td>FIFO by <code class="language-plaintext highlighter-rouge">timecreatedutc</code></td>
+    </tr>
+    <tr>
+      <td>Supports scheduling</td>
+      <td>No</td>
+      <td><code class="language-plaintext highlighter-rouge">bus.Publish(msg, deliverAfter: ...)</code></td>
+    </tr>
+    <tr>
+      <td>Health check</td>
+      <td>Write your own</td>
+      <td><code class="language-plaintext highlighter-rouge">bus.IsPolling</code></td>
+    </tr>
+    <tr>
+      <td>Stored procedures</td>
+      <td><code class="language-plaintext highlighter-rouge">workqueue_enqueue</code> / <code class="language-plaintext highlighter-rouge">workqueue_dequeue</code></td>
+      <td>None — direct SQL</td>
+    </tr>
+    <tr>
+      <td>Backends</td>
+      <td>PostgreSQL, SQL Server</td>
+      <td>PostgreSQL, SQL Server, Redis, SQLite</td>
+    </tr>
+  </tbody>
+</table>
+
+    </main>
+  </div>
+</div>
+<footer>
+  <div class="wrap footer-inner">
+    <span>© TownSuite · MIT License</span>
+    <nav class="footer-links">
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/blob/main/Readme.md" target="_blank" rel="noopener">README</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
+      <a href="https://github.com/TownSuite/TownSuite.WorkQueues/issues" target="_blank" rel="noopener">Issues</a>
+    </nav>
+  </div>
+</footer>
+
+
+</body>
+</html>
